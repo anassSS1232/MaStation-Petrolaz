@@ -1,0 +1,591 @@
+<style>
+    #encaissements-table-body tr:nth-last-child(-n+3) .dropdown-menu-encaissement {
+        bottom: 100%;
+        top: auto;
+        margin-bottom: 0.4rem;
+        margin-top: 0;
+    }
+</style>
+
+<!-- DONNÉES CLIENTS BRUTES POUR JAVASCRIPT -->
+<script type="application/json" id="clients-raw-data">
+    {{ clients | tojson }}
+</script>
+
+<div class="max-w-7xl mx-auto space-y-4 animate-in fade-in duration-150">
+    <!-- HEADER TOP -->
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-[#0E1B26] p-4 rounded-2xl border border-slate-200/90 dark:border-[#183042] shadow-xs">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold">
+                <i data-lucide="wallet" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="font-black text-slate-900 dark:text-white text-base uppercase tracking-wider">Tous les Encaissements Clients</h1>
+                <p class="text-xs text-slate-600 dark:text-slate-300 font-semibold">Affichage : <strong id="live-count-enc" class="text-emerald-500 font-mono text-sm">{{ encaissements|length }}</strong> règlement(s)</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3 font-mono text-xs">
+            <div class="bg-slate-50 dark:bg-[#070E15] px-4 py-2 rounded-xl border border-slate-200 dark:border-[#183042]">
+                <span class="text-[10px] text-slate-500 dark:text-slate-400 uppercase block font-sans font-bold">Total Encaissé</span>
+                <strong id="live-total-enc" class="text-emerald-500 dark:text-[#00F5A0] text-sm sm:text-base font-black">0.00 DH</strong>
+            </div>
+
+            <button type="button" onclick="ouvrirModalNouvelEncaissement()" class="flex items-center justify-center px-5 py-2.5 rounded-xl cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-md transition">
+                Nouvel Encaissement
+            </button>
+        </div>
+    </div>
+
+    <!-- BARRE DE RECHERCHE & FILTRES -->
+    <div class="bg-white dark:bg-[#0E1B26] p-3.5 rounded-2xl border border-slate-200/90 dark:border-[#183042] shadow-xs space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
+            <div class="sm:col-span-5 relative">
+                <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                <input type="text" id="live-search-enc" value="{{ q }}" oninput="filtrerEncaissementsEnDirect()" placeholder="Recherche instantanée (Client, Mode, Réf)..." 
+                       class="w-full bg-slate-50 dark:bg-[#070E15] border border-slate-300 dark:border-[#1E3A52] rounded-xl pl-10 pr-3.5 py-2 text-sm font-semibold text-slate-900 dark:text-white placeholder-slate-400 outline-none transition">
+            </div>
+
+            <div class="sm:col-span-3 flex items-center gap-2 bg-slate-50 dark:bg-[#070E15] border border-slate-300 dark:border-[#1E3A52] rounded-xl px-3 py-1.5">
+                <span class="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 shrink-0">Du:</span>
+                <input type="date" id="live-date-debut-enc" value="{{ val_debut }}" oninput="filtrerEncaissementsEnDirect()" onchange="filtrerEncaissementsEnDirect()"
+                       class="w-full bg-transparent border-0 text-sm font-bold font-mono text-slate-900 dark:text-white outline-none cursor-pointer">
+            </div>
+
+            <div class="sm:col-span-3 flex items-center gap-2 bg-slate-50 dark:bg-[#070E15] border border-slate-300 dark:border-[#1E3A52] rounded-xl px-3 py-1.5">
+                <span class="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 shrink-0">Au:</span>
+                <input type="date" id="live-date-fin-enc" value="{{ val_fin }}" oninput="filtrerEncaissementsEnDirect()" onchange="filtrerEncaissementsEnDirect()"
+                       class="w-full bg-transparent border-0 text-sm font-bold font-mono text-slate-900 dark:text-white outline-none cursor-pointer">
+            </div>
+
+            <div class="sm:col-span-1 flex items-center justify-end">
+                <button type="button" onclick="resetFiltreEncaissementsSemaine()" title="Réinitialiser à la dernière semaine" 
+                        class="w-full py-2 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center justify-center transition">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-[#183042]/50 text-xs">
+            <span class="text-slate-500 dark:text-slate-400 font-bold text-xs">Période :</span>
+            <button type="button" onclick="setPeriodeEncaissements(7)" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-[#132738] hover:bg-emerald-500/20 text-slate-800 dark:text-slate-200 font-bold text-xs transition">7 derniers jours</button>
+            <button type="button" onclick="setPeriodeEncaissements(30)" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-[#132738] hover:bg-emerald-500/20 text-slate-800 dark:text-slate-200 font-bold text-xs transition">30 derniers jours</button>
+            <button type="button" onclick="setPeriodeEncaissements('mois')" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-[#132738] hover:bg-emerald-500/20 text-slate-800 dark:text-slate-200 font-bold text-xs transition">Ce mois</button>
+            <button type="button" onclick="setPeriodeEncaissements('tout')" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-[#132738] hover:bg-emerald-500/20 text-slate-800 dark:text-slate-200 font-bold text-xs transition">Tout afficher</button>
+        </div>
+    </div>
+
+    <!-- TABLEAU DES ENCAISSEMENTS -->
+    <div class="bg-white dark:bg-[#0E1B26] rounded-2xl border border-slate-200/90 dark:border-[#183042] shadow-xs overflow-hidden flex flex-col">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[850px]">
+                <thead class="bg-slate-50 dark:bg-[#070E15] border-b border-slate-200 dark:border-[#183042] text-xs font-black uppercase text-slate-700 dark:text-slate-300">
+                    <tr>
+                        <th class="py-3 px-4">Date</th>
+                        <th class="py-3 px-4">Client</th>
+                        <th class="py-3 px-4">Montant</th>
+                        <th class="py-3 px-3">Mode</th>
+                        <th class="py-3 px-4">Référence</th>
+                        <th class="py-3 px-4">Détails</th>
+                        <th class="py-3 px-3 text-center">Fichier</th>
+                        <th class="py-3 px-4 text-right w-24">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="encaissements-table-body">
+                    {% for e in encaissements %}
+                    <tr class="encaissement-row cursor-pointer border-b border-slate-100 dark:border-[#183042]/50 hover:bg-emerald-50/40 dark:hover:bg-[#132738]/50 transition text-sm group"
+                        data-search="{{ e.search_blob }}"
+                        data-date="{{ e.date_paiement }}"
+                        data-montant="{{ e.montant }}">
+                        <script type="application/json" class="encaissement-row-payload">{{ e.json_payload|safe }}</script>
+
+                        <td class="py-3.5 px-4 font-mono font-bold text-slate-800 dark:text-slate-100 text-[13.5px]">
+                            {{ e.date_affichee }}
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <div class="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-[14px]">
+                                <span>{{ e.client_nom }}</span>
+                                <span class="text-[11px] font-mono font-bold px-2 py-0.5 rounded {% if e.is_passager %}bg-slate-500/20 text-slate-300{% else %}bg-amber-500/15 text-[#E5A842]{% endif %}">
+                                    {{ e.client_code }}
+                                </span>
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4 font-mono font-black text-emerald-500 dark:text-[#00F5A0] text-[14.5px]">
+                            +{{ "%.2f"|format(e.montant) }} MAD
+                        </td>
+                        <td class="py-3.5 px-3">
+                            <span class="px-2.5 py-1 rounded-md bg-emerald-500/15 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-[12px] font-bold">
+                                {{ e.mode_paiement }}
+                            </span>
+                        </td>
+                        <td class="py-3.5 px-4 text-slate-800 dark:text-slate-200 font-mono font-bold text-[13px]">
+                            {{ e.reference or '—' }}
+                        </td>
+                        <td class="py-3.5 px-4 text-slate-800 dark:text-slate-200 font-medium truncate max-w-xs text-[13px]">
+                            {{ e.description or '—' }}
+                        </td>
+                        <td class="py-3.5 px-3 text-center actions-cell">
+                            {% if e.fichier_url %}
+                            <a href="{{ e.fichier_url }}" target="_blank" onclick="event.stopPropagation()" class="text-sky-500 hover:underline font-bold text-[12px] inline-flex items-center gap-1">
+                                <i data-lucide="paperclip" class="w-3.5 h-3.5"></i>Reçu
+                            </a>
+                            {% else %}
+                            <span class="text-slate-400 font-bold">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3.5 px-4 text-right whitespace-nowrap actions-cell" onclick="event.stopPropagation()">
+                            <div class="relative inline-block text-left actions-dropdown-container">
+                                <button type="button" 
+                                        onclick="toggleMenuEncaissement(event, 'menu-enc-{{ e.id }}')" 
+                                        class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#132738] dark:hover:bg-[#18354c] text-slate-700 dark:text-slate-200 flex items-center justify-center transition shadow-2xs cursor-pointer" 
+                                        title="Actions">
+                                    <i data-lucide="more-vertical" class="w-4 h-4"></i>
+                                </button>
+
+                                <div id="menu-enc-{{ e.id }}" 
+                                     class="dropdown-menu-encaissement hidden absolute right-0 mt-1.5 w-48 rounded-2xl bg-white dark:bg-[#0E1B26] border border-slate-200/90 dark:border-[#183042] shadow-2xl py-1.5 z-50 text-left">
+                                    <button type="button" 
+                                            onclick="ouvrirDetailDepuisLigne(this); fermerTousLesMenusEncaissements();" 
+                                            class="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-[#132738] flex items-center gap-2.5 transition cursor-pointer">
+                                        <i data-lucide="eye" class="w-4 h-4 text-emerald-500"></i>
+                                        <span>Voir les Détails</span>
+                                    </button>
+                                    <a href="/encaissements/{{ e.id }}/imprimer" target="_blank" onclick="fermerTousLesMenusEncaissements()"
+                                       class="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-[#132738] flex items-center gap-2.5 transition cursor-pointer">
+                                        <i data-lucide="printer" class="w-4 h-4 text-sky-500"></i>
+                                        <span>Imprimer Reçu</span>
+                                    </a>
+                                    {% if e.client_id and e.client_id > 0 %}
+                                    <div class="my-1 border-t border-slate-100 dark:border-[#183042]/60"></div>
+                                    <a href="/clients/{{ e.client_id }}?tab=encaissements" onclick="fermerTousLesMenusEncaissements()"
+                                       class="w-full px-3.5 py-2 text-left text-xs font-bold text-amber-500 hover:bg-amber-500/10 flex items-center gap-2.5 transition cursor-pointer">
+                                        <i data-lucide="external-link" class="w-4 h-4 text-amber-500"></i>
+                                        <span>Dossier Client</span>
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-12 text-slate-400 text-sm font-semibold italic">Aucun encaissement enregistré.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="encaissements-empty-state" class="hidden text-center py-12 text-slate-400 text-sm font-semibold italic">
+            Aucun encaissement ne correspond à ces critères de recherche.
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL CRÉATION ENCAISSEMENT                -->
+<!-- (DESIGN ÉPURÉ STYLE "NOUVEAU CLIENT")      -->
+<!-- ========================================== -->
+<div id="modalNouvelEncaissement" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xs hidden z-50 flex items-center justify-center p-3 sm:p-4">
+    <form action="/encaissements/ajouter" method="post" enctype="multipart/form-data" class="bg-[#0C1926] w-full max-w-2xl rounded-3xl border border-[#1E3A52] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        <input type="hidden" id="modal_client_id" name="client_id" value="0">
+        <input type="hidden" name="redirect_url" value="/encaissements">
+
+        <!-- EN-TÊTE MODAL : TITRE CLAIR + DATE & HEURE EN BADGES MODERNES -->
+        <div class="px-6 py-4 border-b border-[#1E3A52] flex flex-wrap justify-between items-center bg-[#070E15] gap-3">
+            <div class="flex items-center gap-3">
+                <h3 class="font-black text-white text-base uppercase tracking-wider">
+                    Nouvel Encaissement
+                </h3>
+            </div>
+
+            <div class="flex items-center gap-2.5">
+                <!-- Date Moderne -->
+                <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0C1926] border border-[#1E3A52] shadow-xs">
+                    <i data-lucide="calendar" class="w-3.5 h-3.5 text-amber-400"></i>
+                    <input type="date" id="enc-date-header" name="date_paiement" value="{{ today_iso }}" class="bg-transparent font-mono font-bold text-white text-xs outline-none cursor-pointer">
+                </div>
+
+                <!-- Heure Live Moderne -->
+                <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0C1926] border border-[#1E3A52] shadow-xs">
+                    <i data-lucide="clock" class="w-3.5 h-3.5 text-sky-400"></i>
+                    <span id="enc-live-time" class="font-mono text-xs font-bold text-slate-300">00:00:00</span>
+                </div>
+
+                <button type="button" onclick="fermerModalNouvelEncaissement()" class="text-slate-400 hover:text-white cursor-pointer ml-1 p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- FORMULAIRE AVEC TITRES DANS LES BOÎTES -->
+        <div class="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+            <!-- SECTION BÉNÉFICIAIRE -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Client du Règlement</label>
+                    <select id="select_client_modal" onchange="surChangementClientEncaissement(this.value)" class="w-full bg-transparent font-bold text-white text-xs outline-none cursor-pointer">
+                        <option value="passage" class="bg-[#0C1926] text-white">👤 Particulier / Client Passager</option>
+                        <optgroup label="── Clients Enregistrés ──" class="bg-[#0C1926] text-slate-300">
+                            {% for c in clients %}
+                            <option value="{{ c.id }}" class="bg-[#0C1926] text-white">{{ c.nom }} ({{ c.code }})</option>
+                            {% endfor %}
+                        </optgroup>
+                    </select>
+                </div>
+
+                <!-- Solde Client Dynamique -->
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 flex items-center justify-between">
+                    <div>
+                        <span class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Solde Restant Dû</span>
+                        <div id="display_client_solde" class="font-mono font-black text-sm text-slate-400 pt-0.5">0.00 MAD</div>
+                    </div>
+                    <span id="display_client_nom_badge" class="px-2 py-0.5 rounded text-[10.5px] font-mono font-bold bg-[#101F30] text-sky-400 border border-sky-500/30">PASSAGER</span>
+                </div>
+            </div>
+
+            <!-- Nom Libre pour particulier -->
+            <div id="champ_nom_particulier_wrapper" class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Nom du Client Passager / Particulier *</label>
+                <input type="text" id="input_client_nom_libre" name="client_nom_libre" placeholder="Ex: Client Comptant, M. Alami..." class="w-full bg-transparent font-bold text-white text-xs outline-none uppercase placeholder-slate-600">
+            </div>
+
+            <!-- MONTANT & MODE DE PAIEMENT -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-emerald-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Montant à Encaisser (MAD) *</label>
+                    <input type="number" step="0.01" name="montant" placeholder="0.00" required class="w-full bg-transparent font-mono font-black text-emerald-400 text-sm outline-none placeholder-slate-600">
+                </div>
+
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Mode de Règlement *</label>
+                    <select name="mode_paiement" class="w-full bg-transparent font-bold text-white text-xs outline-none cursor-pointer">
+                        <option value="Espèces" class="bg-[#0C1926]">Espèces</option>
+                        <option value="Chèque" class="bg-[#0C1926]">Chèque</option>
+                        <option value="Virement" class="bg-[#0C1926]">Virement</option>
+                        <option value="Carte Bancaire" class="bg-[#0C1926]">Carte Bancaire</option>
+                        <option value="Effet / Traite" class="bg-[#0C1926]">Effet / Traite</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- RÉFÉRENCE & MOTIF -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Référence / N° Chèque</label>
+                    <input type="text" name="reference" placeholder="ex: CHQ-82910, VIR-..." class="w-full bg-transparent font-mono text-white text-xs outline-none uppercase placeholder-slate-600">
+                </div>
+
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Motif / Description</label>
+                    <input type="text" name="description" placeholder="Acompte, règlement partiel..." class="w-full bg-transparent font-semibold text-white text-xs outline-none placeholder-slate-600">
+                </div>
+            </div>
+
+            <!-- FICHIER DU REÇU JOINT -->
+            <div class="bg-[#070E15] p-3.5 rounded-xl border border-dashed border-[#1E3A52] hover:border-emerald-500/50 transition relative">
+                <span class="text-[10px] font-bold text-slate-400 block mb-1 uppercase">Reçu / Justificatif Joint (PDF, Image)</span>
+                <input type="file" name="fichier" accept=".pdf,.png,.jpg,.jpeg,.webp" onchange="previewUploadNameEnc(this)" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+                <div id="enc-name-fichier" class="text-xs text-emerald-400 font-semibold truncate mt-1">Sélectionner un fichier (Optionnel)</div>
+            </div>
+        </div>
+
+        <!-- BOUTONS DU BAS EXACTEMENT COMME "NOUVEAU CLIENT" -->
+        <div class="px-6 py-4 bg-[#070E15] border-t border-[#1E3A52] flex justify-end gap-3">
+            <button type="button" onclick="fermerModalNouvelEncaissement()" class="px-5 py-2.5 rounded-xl bg-[#101F30] hover:bg-[#162B42] text-slate-300 font-bold text-xs cursor-pointer transition">
+                Annuler
+            </button>
+            <button type="submit" class="px-6 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider cursor-pointer shadow-md transition">
+                Enregistrer
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL DÉTAILS ENCAISSEMENT                 -->
+<!-- ========================================== -->
+<div id="modal-encaissement-detail" class="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#0C1926] border border-[#1E3A52] rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-[#1E3A52] bg-[#070E15]">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold">
+                    <i data-lucide="wallet" class="w-4 h-4"></i>
+                </div>
+                <div>
+                    <h3 class="font-black text-sm text-white uppercase font-sans">ENCAISSEMENT REÇU</h3>
+                    <p id="de-date" class="text-xs text-slate-400 font-mono">Date : --</p>
+                </div>
+            </div>
+            <button onclick="fermerModalEncaissement()" class="text-slate-400 hover:text-white cursor-pointer"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+
+        <div class="p-5 space-y-3.5 text-xs">
+            <div class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Montant Encaissé</span>
+                <h2 id="de-montant" class="text-2xl font-black text-emerald-400 font-mono">+0.00 MAD</h2>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 bg-[#070E15] p-3.5 rounded-xl border border-[#1E3A52]">
+                <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5 font-sans">Client</span>
+                    <p id="de-client" class="font-black text-white text-sm font-sans">--</p>
+                    <p id="de-client-code" class="text-xs text-amber-400 font-mono font-bold mt-1">Code : --</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5 font-sans">Règlement</span>
+                    <span id="de-mode" class="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 text-[11px] font-bold inline-block">--</span>
+                    <p id="de-ref" class="text-xs text-slate-400 font-mono mt-1">Réf : --</p>
+                </div>
+            </div>
+
+            <div class="bg-[#070E15] p-3 rounded-xl border border-[#1E3A52] space-y-1">
+                <span class="text-[10px] font-bold uppercase text-slate-400 block">Description / Motif :</span>
+                <p id="de-desc" class="text-slate-200 font-medium">--</p>
+            </div>
+
+            <div class="flex items-center justify-between text-slate-400 px-1">
+                <span>Enregistré par : <strong id="de-op" class="text-white">--</strong></span>
+                <div id="de-fichier-block" class="hidden">
+                    <a id="de-fichier-link" href="#" target="_blank" class="text-sky-400 hover:underline font-bold text-xs inline-flex items-center gap-1">
+                        <i data-lucide="paperclip" class="w-3.5 h-3.5"></i>
+                        <span>Voir Justificatif</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-[#1E3A52] bg-[#070E15] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <a id="de-print-btn" href="#" target="_blank" class="px-4 py-2 bg-sky-700 hover:bg-sky-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition">
+                    <i data-lucide="printer" class="w-4 h-4"></i>
+                    <span>Imprimer</span>
+                </a>
+                <a id="de-dossier-btn" href="#" class="px-4 py-2 bg-[#101F30] hover:bg-[#162B42] text-amber-400 font-bold rounded-xl text-xs flex items-center gap-1.5 transition">
+                    <i data-lucide="external-link" class="w-4 h-4"></i>
+                    <span>Dossier</span>
+                </a>
+            </div>
+            <button onclick="fermerModalEncaissement()" class="px-4 py-2 bg-[#101F30] hover:bg-[#162B42] text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer">
+                Fermer
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- SCRIPTS JAVASCRIPT DU TEMPLATE             -->
+<!-- ========================================== -->
+<script>
+    const clientsData = JSON.parse(document.getElementById('clients-raw-data').textContent || '[]');
+
+    function updateLiveClock() {
+        const clockEl = document.getElementById('enc-live-time');
+        if (clockEl) {
+            const now = new Date();
+            clockEl.innerText = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+    }
+    setInterval(updateLiveClock, 1000);
+    updateLiveClock();
+
+    function toggleMenuEncaissement(event, menuId) {
+        event.stopPropagation();
+        const targetMenu = document.getElementById(menuId);
+        if (!targetMenu) return;
+
+        const isHidden = targetMenu.classList.contains('hidden');
+        fermerTousLesMenusEncaissements();
+
+        if (isHidden) {
+            targetMenu.classList.remove('hidden');
+        }
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function fermerTousLesMenusEncaissements() {
+        document.querySelectorAll('.dropdown-menu-encaissement').forEach(menu => {
+            menu.classList.add('hidden');
+        });
+    }
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.actions-dropdown-container')) {
+            fermerTousLesMenusEncaissements();
+        }
+    });
+
+    function filtrerEncaissementsEnDirect() {
+        fermerTousLesMenusEncaissements();
+        const q = (document.getElementById('live-search-enc').value || '').toLowerCase().trim();
+        const dDebut = document.getElementById('live-date-debut-enc').value;
+        const dFin = document.getElementById('live-date-fin-enc').value;
+
+        const rows = document.querySelectorAll('.encaissement-row');
+        let countVisible = 0;
+        let sumMontant = 0;
+
+        rows.forEach(row => {
+            const searchBlob = row.getAttribute('data-search') || '';
+            const rowDate = row.getAttribute('data-date') || '';
+            const montant = parseFloat(row.getAttribute('data-montant')) || 0;
+
+            let match = true;
+
+            if (q && !searchBlob.includes(q)) match = false;
+            if (match && dDebut && rowDate && rowDate < dDebut) match = false;
+            if (match && dFin && rowDate && rowDate > dFin) match = false;
+
+            if (match) {
+                row.style.display = '';
+                countVisible++;
+                sumMontant += montant;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        document.getElementById('live-count-enc').innerText = countVisible;
+        document.getElementById('live-total-enc').innerText = sumMontant.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH';
+
+        const emptyEl = document.getElementById('encaissements-empty-state');
+        if (emptyEl) {
+            emptyEl.classList.toggle('hidden', countVisible > 0 || rows.length === 0);
+        }
+    }
+
+    function setPeriodeEncaissements(duree) {
+        const inputDeb = document.getElementById('live-date-debut-enc');
+        const inputFin = document.getElementById('live-date-fin-enc');
+        const today = new Date();
+
+        if (duree === 'tout') {
+            inputDeb.value = '';
+            inputFin.value = '';
+        } else if (duree === 'mois') {
+            const y = today.getFullYear();
+            const m = String(today.getMonth() + 1).padStart(2, '0');
+            inputDeb.value = `${y}-${m}-01`;
+            inputFin.value = today.toISOString().split('T')[0];
+        } else {
+            const past = new Date(today);
+            past.setDate(past.getDate() - parseInt(duree));
+            inputDeb.value = past.toISOString().split('T')[0];
+            inputFin.value = today.toISOString().split('T')[0];
+        }
+        filtrerEncaissementsEnDirect();
+    }
+
+    function resetFiltreEncaissementsSemaine() {
+        document.getElementById('live-search-enc').value = '';
+        setPeriodeEncaissements(7);
+    }
+
+    function ouvrirModalNouvelEncaissement() {
+        document.getElementById('modalNouvelEncaissement').classList.remove('hidden');
+        surChangementClientEncaissement(document.getElementById('select_client_modal').value);
+        updateLiveClock();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function fermerModalNouvelEncaissement() {
+        document.getElementById('modalNouvelEncaissement').classList.add('hidden');
+    }
+
+    function surChangementClientEncaissement(val) {
+        const inputId = document.getElementById('modal_client_id');
+        const champLibreWrapper = document.getElementById('champ_nom_particulier_wrapper');
+        const inputLibre = document.getElementById('input_client_nom_libre');
+        const displaySolde = document.getElementById('display_client_solde');
+        const badgeCode = document.getElementById('display_client_nom_badge');
+
+        if (val === 'passage') {
+            inputId.value = "0";
+            champLibreWrapper.classList.remove('hidden');
+            inputLibre.setAttribute('required', 'required');
+            displaySolde.innerText = 'Règlement Comptant';
+            displaySolde.className = 'font-mono font-bold text-xs text-slate-400 pt-0.5';
+            badgeCode.innerText = 'PASSAGER';
+            badgeCode.className = 'px-2 py-0.5 rounded text-[10.5px] font-mono font-bold bg-[#101F30] text-sky-400 border border-sky-500/30';
+        } else {
+            inputId.value = val;
+            champLibreWrapper.classList.add('hidden');
+            inputLibre.removeAttribute('required');
+
+            const cl = clientsData.find(c => String(c.id) === String(val));
+            if (cl) {
+                inputLibre.value = cl.nom;
+                const solde = parseFloat(cl.solde || 0.0);
+                displaySolde.innerText = solde.toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' MAD';
+                displaySolde.className = solde > 0 ? 'font-mono font-black text-sm text-rose-400 pt-0.5' : 'font-mono font-black text-sm text-emerald-400 pt-0.5';
+                badgeCode.innerText = cl.code;
+                badgeCode.className = 'px-2 py-0.5 rounded text-[10.5px] font-mono font-bold bg-[#101F30] text-amber-400 border border-amber-500/30';
+            }
+        }
+    }
+
+    function previewUploadNameEnc(input) {
+        const el = document.getElementById('enc-name-fichier');
+        if (input.files && input.files[0]) {
+            el.innerText = 'Sélectionné : ' + input.files[0].name;
+        }
+    }
+
+    function afficherDetailEncaissement(e) {
+        document.getElementById('de-date').innerText = 'Date : ' + e.date_paiement;
+        document.getElementById('de-montant').innerText = '+' + Number(e.montant).toLocaleString('fr-FR', {minimumFractionDigits: 2}) + ' MAD';
+        document.getElementById('de-client').innerText = e.client_nom;
+        document.getElementById('de-client-code').innerText = 'Code : ' + (e.client_code || '—');
+        document.getElementById('de-mode').innerText = e.mode_paiement;
+        document.getElementById('de-ref').innerText = 'Réf : ' + (e.reference || '—');
+        document.getElementById('de-desc').innerText = e.description || 'Aucune remarque enregistrée.';
+        document.getElementById('de-op').innerText = e.operateur || 'Safouane';
+
+        const fileBlock = document.getElementById('de-fichier-block');
+        if (e.fichier && e.fichier.trim() !== '') {
+            fileBlock.classList.remove('hidden');
+            document.getElementById('de-fichier-link').href = e.fichier;
+        } else {
+            fileBlock.classList.add('hidden');
+        }
+
+        const printBtn = document.getElementById('de-print-btn');
+        if (printBtn) {
+            printBtn.href = '/encaissements/' + e.id + '/imprimer';
+        }
+
+        const dossierBtn = document.getElementById('de-dossier-btn');
+        if (e.client_id && parseInt(e.client_id) > 0) {
+            dossierBtn.href = '/clients/' + e.client_id + '?tab=encaissements';
+            dossierBtn.classList.remove('hidden');
+        } else {
+            dossierBtn.classList.add('hidden');
+        }
+
+        document.getElementById('modal-encaissement-detail').classList.remove('hidden');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function fermerModalEncaissement() {
+        document.getElementById('modal-encaissement-detail').classList.add('hidden');
+    }
+
+    function ouvrirDetailDepuisLigne(btn) {
+        const row = btn.closest('.encaissement-row');
+        const script = row.querySelector('.encaissement-row-payload');
+        if (script) afficherDetailEncaissement(JSON.parse(script.textContent));
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.encaissement-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('.actions-cell')) return;
+                const script = row.querySelector('.encaissement-row-payload');
+                if (script) afficherDetailEncaissement(JSON.parse(script.textContent));
+            });
+        });
+
+        filtrerEncaissementsEnDirect();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+</script>

@@ -1,0 +1,232 @@
+<div class="max-w-7xl mx-auto space-y-5 animate-in fade-in duration-150">
+    <!-- BANDEAU PRINCIPAL AVEC RECHERCHE AU MILIEU -->
+    <div class="bg-[#0C1926] p-4 rounded-2xl border border-[#1A334A] shadow-md flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <!-- TITRE SANS SOUS-TITRE -->
+        <div class="flex items-center gap-3 shrink-0">
+            <h1 class="text-base sm:text-lg font-black text-white uppercase tracking-wider">Gestion Clients</h1>
+        </div>
+
+        <!-- RECHERCHE AU MILIEU -->
+        <div class="flex-1 max-w-md mx-auto w-full">
+            <div class="relative w-full">
+                <input type="text" id="liveSearchClients" oninput="filtrerClientsDirect()" value="{{ q }}" placeholder="Rechercher par nom, code ou téléphone..." 
+                       class="w-full px-4 py-2.5 rounded-xl bg-[#060D15] border border-[#1E3A52] text-xs font-semibold text-white placeholder-slate-400 outline-none focus:border-sky-500 transition">
+            </div>
+        </div>
+
+        <!-- FILTRE STATUT & BOUTON NOUVEAU SANS ICONE -->
+        <div class="flex items-center justify-end gap-3 shrink-0">
+            <div class="relative min-w-[130px]">
+                <select id="filterStatutSelect" onchange="changerFiltreUrl(this.value)"
+                        class="w-full px-3 py-2.5 rounded-xl bg-[#060D15] border border-[#1E3A52] text-xs font-bold text-slate-200 outline-none cursor-pointer">
+                    <option value="tous" {% if filtre == 'tous' %}selected{% endif %}>Tous les statuts</option>
+                    <option value="actif" {% if filtre == 'actif' %}selected{% endif %}>Actifs</option>
+                    <option value="debiteur" {% if filtre == 'debiteur' %}selected{% endif %}>Débiteurs</option>
+                    <option value="inactif" {% if filtre == 'inactif' %}selected{% endif %}>Inactifs</option>
+                </select>
+            </div>
+
+            <button type="button" onclick="toggleModalAdd(true)" class="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-sky-700 hover:bg-sky-600 border border-sky-500/40 transition active:scale-95 cursor-pointer">
+                Nouveau
+            </button>
+        </div>
+    </div>
+
+    <!-- GRILLE DES DOSSIERS (DESIGN PRO, COULEUR PREMIUM, CLIQUABLE DIRECT) -->
+    <div id="clientsGridView" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
+        {% for c in clients %}
+        <div onclick="window.location.href='/clients/{{ c.id }}'"
+             class="client-card group cursor-pointer bg-[#101F30] hover:bg-[#13263B] border border-[#1E3A52] hover:border-sky-500/60 rounded-2xl p-4 shadow-sm hover:shadow-lg transition-all duration-150 flex flex-col justify-between"
+             data-search="{{ c.search_blob }}">
+            <div>
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <h3 class="font-black text-[14px] text-white truncate group-hover:text-sky-400 transition-colors" title="{{ c.nom }}">
+                        {{ c.nom }}
+                    </h3>
+                    {% if c.statut == 'ACTIF' %}
+                    <span class="inline-block px-2 py-0.5 rounded-md text-[10.5px] font-black uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">Actif</span>
+                    {% else %}
+                    <span class="inline-block px-2 py-0.5 rounded-md text-[10.5px] font-black uppercase bg-slate-500/20 text-slate-300 border border-slate-500/30 shrink-0">Inactif</span>
+                    {% endif %}
+                </div>
+
+                <div class="space-y-2 pt-2.5 border-t border-[#182C40] text-[12.5px] font-mono">
+                    <div class="flex items-center justify-between">
+                        <span class="font-sans text-[11.5px] font-bold text-slate-300">Total Payé :</span>
+                        <span class="font-bold text-emerald-400">{{ "%.2f"|format(c.total_paye) }} MAD</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="font-sans text-[11.5px] font-bold text-slate-300">Crédit :</span>
+                        <span class="font-black {% if c.solde > 0 %}text-rose-400{% else %}text-emerald-400{% endif %}">
+                            {{ "%.2f"|format(c.solde) }} MAD
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-span-full py-16 text-center text-slate-400 font-bold bg-[#0C1926] rounded-2xl border border-[#1E3A52]">
+            Aucun client enregistré.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODALE AJOUT NOUVEAU CLIENT -->
+<!-- ========================================== -->
+<div id="modalAddClient" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xs hidden z-50 flex items-center justify-center p-3 sm:p-4">
+    <form action="/clients/add" method="post" enctype="multipart/form-data" class="bg-[#0C1926] w-full max-w-3xl rounded-3xl border border-[#1E3A52] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div class="px-6 py-4 border-b border-[#1E3A52] flex justify-between items-center bg-[#070E15]">
+            <h3 class="font-black text-white text-base uppercase tracking-wider">Nouveau Client</h3>
+            <button type="button" onclick="toggleModalAdd(false)" class="text-slate-400 hover:text-white cursor-pointer"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+
+        <div class="p-6 space-y-4 text-xs overflow-y-auto">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Type de Client *</label>
+                    <select id="add_type_client" name="type_client" onchange="adapterChampsType('add')" class="w-full bg-transparent font-bold text-white text-xs outline-none cursor-pointer">
+                        <option value="Entreprise" class="bg-[#0C1926] text-white" selected>Entreprise / Société</option>
+                        <option value="Particulier" class="bg-[#0C1926] text-white">Particulier</option>
+                    </select>
+                </div>
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Code Client *</label>
+                    <input type="text" name="code" value="{{ auto_code }}" required class="w-full bg-transparent font-mono font-black text-sky-400 text-xs outline-none uppercase">
+                </div>
+            </div>
+
+            <!-- Raison Sociale Entreprise -->
+            <div id="add_box_entreprise" class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Raison Sociale *</label>
+                <input type="text" id="add_nom_entreprise" name="nom_entreprise" class="w-full bg-transparent font-bold text-white text-xs outline-none uppercase">
+            </div>
+
+            <!-- Nom & Prénom Particulier -->
+            <div id="add_box_particulier" class="grid grid-cols-1 sm:grid-cols-2 gap-4 hidden">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Nom *</label>
+                    <input type="text" id="add_nom_particulier" name="nom_particulier" class="w-full bg-transparent font-bold text-white text-xs outline-none uppercase">
+                </div>
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Prénom *</label>
+                    <input type="text" id="add_prenom_particulier" name="prenom_particulier" class="w-full bg-transparent font-bold text-white text-xs outline-none capitalize">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Téléphone</label>
+                    <input type="tel" name="telephone" class="w-full bg-transparent font-mono text-white text-xs outline-none">
+                </div>
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label id="add_label_ice_cin" class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">N° ICE</label>
+                    <input type="text" name="ice" class="w-full bg-transparent font-mono text-white text-xs outline-none uppercase">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1 border-t border-[#182C40]">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Plafond Autorisé (MAD)</label>
+                    <input type="number" step="0.01" name="plafond" value="0.00" class="w-full bg-transparent font-mono font-bold text-white text-xs outline-none">
+                </div>
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Solde Initial Débiteur (MAD)</label>
+                    <input type="number" step="0.01" name="solde" value="0.00" class="w-full bg-transparent font-mono font-black text-rose-400 text-xs outline-none">
+                </div>
+            </div>
+
+            <!-- UPLOAD DOCUMENTS MODERNE -->
+            <div id="add_section_docs_entreprise" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-[#070E15] p-3.5 rounded-xl border border-dashed border-[#1E3A52] hover:border-sky-500/50 transition relative">
+                    <span class="text-[11px] font-bold text-slate-200 block mb-1 uppercase">Registre de Commerce (RC)</span>
+                    <input type="file" name="doc_rc_file" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="previewUploadName(this, 'name-rc')" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+                    <div id="name-rc" class="text-xs text-sky-400 font-semibold truncate mt-1">Sélectionner un fichier (PDF, Image)</div>
+                </div>
+                <div class="bg-[#070E15] p-3.5 rounded-xl border border-dashed border-[#1E3A52] hover:border-sky-500/50 transition relative">
+                    <span class="text-[11px] font-bold text-slate-200 block mb-1 uppercase">Statuts de la Société</span>
+                    <input type="file" name="doc_statuts_file" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="previewUploadName(this, 'name-statuts')" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+                    <div id="name-statuts" class="text-xs text-sky-400 font-semibold truncate mt-1">Sélectionner un fichier (PDF, Image)</div>
+                </div>
+            </div>
+            <div id="add_section_docs_particulier" class="hidden">
+                <div class="bg-[#070E15] p-3.5 rounded-xl border border-dashed border-[#1E3A52] hover:border-sky-500/50 transition relative">
+                    <span class="text-[11px] font-bold text-slate-200 block mb-1 uppercase">Copie de la CIN</span>
+                    <input type="file" name="doc_cin_file" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="previewUploadName(this, 'name-cin')" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+                    <div id="name-cin" class="text-xs text-sky-400 font-semibold truncate mt-1">Sélectionner un fichier (PDF, Image)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-[#070E15] border-t border-[#1E3A52] flex justify-end gap-3">
+            <button type="button" onclick="toggleModalAdd(false)" class="px-5 py-2.5 rounded-xl bg-[#101F30] hover:bg-[#162B42] text-slate-300 font-bold text-xs cursor-pointer">
+                Annuler
+            </button>
+            <button type="submit" class="px-6 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-600 text-white font-black text-xs uppercase cursor-pointer">
+                Enregistrer
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    function toggleModalAdd(show) {
+        document.getElementById('modalAddClient').classList.toggle('hidden', !show);
+        if (show) adapterChampsType('add');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function adapterChampsType(prefix) {
+        const typeSelect = document.getElementById(prefix === 'add' ? 'add_type_client' : 'edit_cl_type');
+        const isPart = (typeSelect.value === 'Particulier');
+
+        const entBox = document.getElementById(prefix === 'add' ? 'add_box_entreprise' : 'edit_box_entreprise');
+        const partBox = document.getElementById(prefix === 'add' ? 'add_box_particulier' : 'edit_box_particulier');
+        const labelIceCin = document.getElementById(prefix === 'add' ? 'add_label_ice_cin' : 'edit_label_ice_cin');
+        const docsEnt = document.getElementById(prefix === 'add' ? 'add_section_docs_entreprise' : 'edit_section_docs_entreprise');
+        const docsPart = document.getElementById(prefix === 'add' ? 'add_section_docs_particulier' : 'edit_section_docs_particulier');
+
+        if (isPart) {
+            entBox.classList.add('hidden');
+            partBox.classList.remove('hidden');
+            docsEnt.classList.add('hidden');
+            docsPart.classList.remove('hidden');
+            labelIceCin.innerText = 'N° CIN';
+        } else {
+            entBox.classList.remove('hidden');
+            partBox.classList.add('hidden');
+            docsEnt.classList.remove('hidden');
+            docsPart.classList.add('hidden');
+            labelIceCin.innerText = 'N° ICE';
+        }
+    }
+
+    function previewUploadName(input, labelId) {
+        const el = document.getElementById(labelId);
+        if (input.files && input.files[0]) {
+            el.innerText = 'Sélectionné : ' + input.files[0].name;
+        }
+    }
+
+    function filtrerClientsDirect() {
+        const q = (document.getElementById('liveSearchClients').value || '').toLowerCase().trim();
+        const cards = document.querySelectorAll('.client-card');
+
+        cards.forEach(card => {
+            const blob = card.getAttribute('data-search') || '';
+            const match = !q || blob.includes(q);
+            card.style.display = match ? 'flex' : 'none';
+        });
+    }
+
+    function changerFiltreUrl(filtreVal) {
+        const url = new URL(window.location);
+        url.searchParams.set('filtre', filtreVal);
+        window.location.href = url.toString();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+</script>

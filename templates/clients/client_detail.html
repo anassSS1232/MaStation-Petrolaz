@@ -1,0 +1,538 @@
+<div class="max-w-7xl mx-auto space-y-4 animate-in fade-in duration-150">
+    <!-- DONNEES BRUTES CLIENT POUR JAVASCRIPT (SANS ERREUR JINJA) -->
+    <script type="application/json" id="client-raw-data">
+    {
+        "id": {{ client.id }},
+        "nom": {{ client.nom|tojson }},
+        "type_client": {{ client.type_client|tojson }},
+        "code": {{ client.code|tojson }},
+        "statut": {{ client.statut|tojson }},
+        "telephone": {{ (client.telephone or '')|tojson }},
+        "ice": {{ (client.ice or '')|tojson }},
+        "plafond": {{ client.plafond or 0.0 }},
+        "solde": {{ client.solde or 0.0 }}
+    }
+    </script>
+
+    <!-- FICHE COMPLETE CLIENT EN HAUT -->
+    <div class="bg-[#0C1926] p-5 rounded-3xl border border-[#1A334A] shadow-md space-y-4">
+        <!-- Ligne Supérieure : Navigation + Identité + Menu Options Exactement comme l'image -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#182C40]">
+            <div class="flex items-center gap-3.5">
+                <a href="/clients" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[#060D15] hover:bg-[#101F30] text-slate-200 text-xs font-bold border border-[#1E3A52] transition">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                    <span>Retour</span>
+                </a>
+                <div>
+                    <h1 class="text-lg font-black text-white uppercase flex items-center gap-2.5">
+                        <span>{{ client.nom }}</span>
+                        <span class="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-[#101F30] text-sky-400 border border-sky-500/30">{{ client.code }}</span>
+                        {% if client.statut == 'ACTIF' %}
+                        <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Actif</span>
+                        {% else %}
+                        <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-500/20 text-slate-300 border border-slate-500/30">Inactif</span>
+                        {% endif %}
+                    </h1>
+                    <p class="text-xs text-slate-300 font-semibold mt-0.5">
+                        {{ client.type_client }} • Date création : {{ client.date_creation or '—' }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- BOUTON OPTIONS & MENU IDENTIQUE A L'IMAGE FOURNIE -->
+            <div class="relative">
+                <button type="button" onclick="toggleOptionMenu(event)" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#060D15] hover:bg-[#101F30] border border-[#1E3A52] text-xs font-bold text-slate-200 cursor-pointer transition">
+                    <span>Options</span>
+                    <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+                </button>
+
+                <!-- MENU DEROULANT AVEC STYLE EXACT (MODIFIER AVEC STYLO JAUNE, SUPPRIMER ENCADRÉ ROUGE) -->
+                <div id="clientOptionsDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#0C1926] border border-[#1E3A52] rounded-2xl shadow-2xl p-1.5 z-50 space-y-1">
+                    <button type="button" onclick="fermerOptionMenu(); ouvrirModalModifierClient();" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:bg-[#13263B] flex items-center gap-2.5 transition cursor-pointer">
+                        <i data-lucide="pencil" class="w-4 h-4 text-amber-400"></i>
+                        <span>Modifier</span>
+                    </button>
+                    
+                    <form action="/clients/delete" method="post" onsubmit="return confirm('Confirmer la suppression définitive de ce dossier client ?');" class="m-0">
+                        <input type="hidden" name="client_id" value="{{ client.id }}">
+                        <button type="submit" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 flex items-center gap-2.5 transition cursor-pointer">
+                            <i data-lucide="trash-2" class="w-4 h-4 text-rose-500"></i>
+                            <span>Supprimer</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coordonnées et Documents -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-[#070E15] p-3.5 rounded-2xl border border-[#1A334A]">
+            <div>
+                <span class="text-[11px] uppercase font-bold text-slate-300 block">Téléphone</span>
+                <span class="font-mono font-bold text-white text-[13px]">{{ client.telephone or 'Non renseigné' }}</span>
+            </div>
+            <div>
+                <span class="text-[11px] uppercase font-bold text-slate-300 block">ICE / CIN</span>
+                <span class="font-mono font-bold text-white text-[13px]">{{ client.ice or 'Non renseigné' }}</span>
+            </div>
+            <div>
+                <span class="text-[11px] uppercase font-bold text-slate-300 block">Plafond Crédit</span>
+                <span class="font-mono font-bold text-white text-[13px]">{{ "%.2f"|format(client.plafond or 0.0) }} MAD</span>
+            </div>
+            <div>
+                <span class="text-[11px] uppercase font-bold text-slate-300 block">Documents Enregistrés</span>
+                <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+                    {% if client.type_client == 'Particulier' and client.doc_cin %}
+                    <a href="{{ client.doc_cin }}" target="_blank" class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[11px] font-bold hover:underline">CIN</a>
+                    {% else %}
+                        {% if client.doc_rc %}<a href="{{ client.doc_rc }}" target="_blank" class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold hover:underline">RC</a>{% endif %}
+                        {% if client.doc_statuts %}<a href="{{ client.doc_statuts }}" target="_blank" class="px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 text-[11px] font-bold hover:underline">Statuts</a>{% endif %}
+                    {% endif %}
+                    {% if not client.doc_cin and not client.doc_rc and not client.doc_statuts %}
+                    <span class="text-slate-400 italic text-[11px]">Aucun document</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Synthèse des Soldes -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono">
+            <div class="bg-[#070E15] p-3 rounded-2xl border border-[#1A334A] text-center">
+                <span class="text-[11px] text-slate-300 uppercase block font-sans font-bold">Total Facturé</span>
+                <strong class="text-sky-400 font-black text-base">{{ "%.2f"|format(total_factures) }} MAD</strong>
+            </div>
+            <div class="bg-[#070E15] p-3 rounded-2xl border border-[#1A334A] text-center">
+                <span class="text-[11px] text-slate-300 uppercase block font-sans font-bold">Total Encaissé</span>
+                <strong class="text-emerald-400 font-black text-base">{{ "%.2f"|format(total_encaisse) }} MAD</strong>
+            </div>
+            <div class="bg-[#070E15] p-3 rounded-2xl border border-[#1A334A] text-center">
+                <span class="text-[11px] text-slate-300 uppercase block font-sans font-bold">Solde Restant Dû</span>
+                <strong class="{% if solde_actuel > 0 %}text-rose-400{% else %}text-emerald-400{% endif %} font-black text-base">
+                    {{ "%.2f"|format(solde_actuel) }} MAD
+                </strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- HISTORIQUE SANS BOUTONS FACTURER OU ENCAISSER -->
+    <div class="bg-[#0C1926] rounded-3xl border border-[#1A334A] shadow-md overflow-hidden">
+        <div class="flex items-center justify-between p-3 border-b border-[#182C40] bg-[#070E15]">
+            <div class="inline-flex p-1 bg-[#060D15] rounded-xl text-xs font-bold">
+                <button onclick="switchTab('tab-factures')" id="btn-tab-factures" class="tab-btn px-4 py-2 rounded-lg transition {% if tab != 'encaissements' %}bg-[#101F30] text-white shadow-xs{% else %}text-slate-400{% endif %}">
+                    Factures ({{ factures|length }})
+                </button>
+                <button onclick="switchTab('tab-encaissements')" id="btn-tab-encaissements" class="tab-btn px-4 py-2 rounded-lg transition {% if tab == 'encaissements' %}bg-[#101F30] text-white shadow-xs{% else %}text-slate-400{% endif %}">
+                    Encaissements ({{ encaissements|length }})
+                </button>
+            </div>
+            <span class="text-xs text-slate-300 font-bold px-2">Historique d'Activité</span>
+        </div>
+
+        <!-- LISTE FACTURES -->
+        <div id="tab-factures" class="tab-content {% if tab == 'encaissements' %}hidden{% endif %} overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[700px]">
+                <thead class="bg-[#070E15] border-b border-[#182C40] text-[11px] font-black uppercase text-slate-300">
+                    <tr>
+                        <th class="py-3 px-4">N° Facture</th>
+                        <th class="py-3 px-3">Date</th>
+                        <th class="py-3 px-3">Période</th>
+                        <th class="py-3 px-3 text-right">Montant HT</th>
+                        <th class="py-3 px-3 text-right">TVA</th>
+                        <th class="py-3 px-4 text-right">Total TTC</th>
+                        <th class="py-3 px-4 text-right w-24">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in factures %}
+                    <tr class="facture-row cursor-pointer border-b border-[#182C40]/60 hover:bg-[#101F30] transition text-xs group"
+                        data-facture-id="{{ f.id }}">
+                        <script type="application/json" class="facture-payload">{{ f.json_payload|safe }}</script>
+                        <td class="py-3 px-4 font-mono font-black text-sky-400 group-hover:underline">{{ f.numero_facture }}</td>
+                        <td class="py-3 px-3 font-mono text-slate-200 font-semibold">{{ f.date_facture }}</td>
+                        <td class="py-3 px-3 text-slate-300 font-mono text-[11.5px]">{{ f.periode_str }}</td>
+                        <td class="py-3 px-3 font-mono text-right text-slate-200">{{ "%.2f"|format(f.montant_ht) }}</td>
+                        <td class="py-3 px-3 font-mono text-right text-slate-200">{{ "%.2f"|format(f.montant_tva) }}</td>
+                        <td class="py-3 px-4 font-mono font-black text-right text-sky-400 text-[14px]">{{ "%.2f"|format(f.montant_ttc) }} MAD</td>
+                        <td class="py-3 px-4 text-right actions-cell">
+                            <a href="/factures/{{ f.id }}/imprimer" target="_blank" class="w-8 h-8 rounded-lg bg-sky-500/10 hover:bg-sky-500 text-sky-400 hover:text-white inline-flex items-center justify-center transition" title="Imprimer">
+                                <i data-lucide="printer" class="w-4 h-4"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center py-12 text-slate-400 text-xs font-semibold italic">Aucune facture enregistrée pour ce client.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- LISTE ENCAISSEMENTS -->
+        <div id="tab-encaissements" class="tab-content {% if tab != 'encaissements' %}hidden{% endif %} overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[700px]">
+                <thead class="bg-[#070E15] border-b border-[#182C40] text-[11px] font-black uppercase text-slate-300">
+                    <tr>
+                        <th class="py-3 px-4">Date Règlement</th>
+                        <th class="py-3 px-3">Montant Encaissé</th>
+                        <th class="py-3 px-3">Mode</th>
+                        <th class="py-3 px-3">Référence</th>
+                        <th class="py-3 px-3">Détails</th>
+                        <th class="py-3 px-3 text-center">Fichier</th>
+                        <th class="py-3 px-4 text-right w-24">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in encaissements %}
+                    <tr class="encaissement-row cursor-pointer border-b border-[#182C40]/60 hover:bg-[#101F30] transition text-xs group"
+                        data-encaissement-id="{{ e.id }}">
+                        <script type="application/json" class="encaissement-payload">{{ e.json_payload|safe }}</script>
+                        <td class="py-3 px-4 font-mono text-slate-200 font-semibold">{{ e.date_paiement }}</td>
+                        <td class="py-3 px-3 font-mono font-black text-emerald-400 text-[14px]">+{{ "%.2f"|format(e.montant) }} MAD</td>
+                        <td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[11px] font-bold">{{ e.mode_paiement }}</span></td>
+                        <td class="py-3 px-3 text-slate-300 font-mono">{{ e.reference or '—' }}</td>
+                        <td class="py-3 px-3 text-slate-200 truncate max-w-xs">{{ e.description or '—' }}</td>
+                        <td class="py-3 px-3 text-center actions-cell">
+                            {% if e.fichier_url %}
+                            <a href="{{ e.fichier_url }}" target="_blank" class="text-sky-400 hover:underline font-bold text-[11px] inline-flex items-center gap-1">
+                                <i data-lucide="paperclip" class="w-3.5 h-3.5"></i> Fichier
+                            </a>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="py-3 px-4 text-right actions-cell">
+                            <a href="/encaissements/{{ e.id }}/imprimer" target="_blank" class="w-8 h-8 rounded-lg bg-sky-500/10 hover:bg-sky-500 text-sky-400 hover:text-white inline-flex items-center justify-center transition" title="Imprimer">
+                                <i data-lucide="printer" class="w-4 h-4"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center py-12 text-slate-400 text-xs font-semibold italic">Aucun règlement enregistré pour ce client.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODALE MODIFIER INFORMATIONS CLIENT -->
+<!-- ========================================== -->
+<div id="modalEditClient" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xs hidden z-50 flex items-center justify-center p-3 sm:p-4">
+    <form action="/clients/edit-info" method="post" enctype="multipart/form-data" class="bg-[#0C1926] w-full max-w-3xl rounded-3xl border border-[#1E3A52] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        <input type="hidden" name="client_id" value="{{ client.id }}">
+        
+        <div class="px-6 py-4 border-b border-[#1E3A52] flex justify-between items-center bg-[#070E15]">
+            <h3 class="font-black text-white text-base uppercase">Modifier Fiche Client</h3>
+            <button type="button" onclick="toggleModalEdit(false)" class="text-slate-400 hover:text-white cursor-pointer"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+
+        <div class="p-6 space-y-4 text-xs overflow-y-auto">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Type</label>
+                    <select id="edit_cl_type" name="type_client" onchange="adapterChampsEdit()" class="w-full bg-transparent font-bold text-white text-xs outline-none cursor-pointer">
+                        <option value="Entreprise">Entreprise</option>
+                        <option value="Particulier">Particulier</option>
+                    </select>
+                </div>
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Code Client *</label>
+                    <input type="text" id="edit_code" name="code" required class="w-full bg-transparent font-mono font-bold text-sky-400 text-xs outline-none uppercase">
+                </div>
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Statut</label>
+                    <select id="edit_statut" name="statut" class="w-full bg-transparent font-bold text-white text-xs outline-none cursor-pointer">
+                        <option value="ACTIF">ACTIF</option>
+                        <option value="INACTIF">INACTIF</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Entreprise : Raison Sociale -->
+            <div id="edit_box_entreprise" class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Raison Sociale *</label>
+                <input type="text" id="edit_nom_entreprise" name="nom_entreprise" class="w-full bg-transparent font-bold text-white text-xs outline-none uppercase">
+            </div>
+
+            <!-- Particulier : Nom & Prénom -->
+            <div id="edit_box_particulier" class="grid grid-cols-1 sm:grid-cols-2 gap-4 hidden">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Nom *</label>
+                    <input type="text" id="edit_nom_part" name="nom_particulier" class="w-full bg-transparent font-bold text-white text-xs outline-none uppercase">
+                </div>
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Prénom *</label>
+                    <input type="text" id="edit_prenom_part" name="prenom_particulier" class="w-full bg-transparent font-bold text-white text-xs outline-none capitalize">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Téléphone</label>
+                    <input type="tel" id="edit_telephone" name="telephone" class="w-full bg-transparent font-mono text-white text-xs outline-none">
+                </div>
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label id="edit_label_ice" class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">N° ICE</label>
+                    <input type="text" id="edit_ice" name="ice" class="w-full bg-transparent font-mono text-white text-xs outline-none uppercase">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1 border-t border-[#182C40]">
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Plafond (MAD)</label>
+                    <input type="number" step="0.01" id="edit_plafond" name="plafond" class="w-full bg-transparent font-mono font-bold text-white text-xs outline-none">
+                </div>
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-4 pb-1.5 focus-within:border-sky-500">
+                    <label class="absolute text-[10.5px] font-bold text-slate-300 uppercase top-1 left-3">Solde Dû Actuel (MAD)</label>
+                    <input type="number" step="0.01" id="edit_solde" name="solde" class="w-full bg-transparent font-mono font-black text-rose-400 text-xs outline-none">
+                </div>
+            </div>
+
+            <!-- Documents -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-[#070E15] p-3.5 rounded-xl border border-dashed border-[#1E3A52] hover:border-sky-500/50 transition relative">
+                    <span id="edit_label_doc1" class="text-[11px] font-bold text-slate-200 block mb-1 uppercase">Remplacer RC</span>
+                    <input type="file" name="doc_rc_file" onchange="previewUploadName(this, 'edit-name-rc')" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+                    <div id="edit-name-rc" class="text-xs text-sky-400 font-semibold truncate mt-1">Sélectionner un nouveau fichier</div>
+                </div>
+                <div id="edit_box_doc2" class="bg-[#070E15] p-3.5 rounded-xl border border-dashed border-[#1E3A52] hover:border-sky-500/50 transition relative">
+                    <span class="text-[11px] font-bold text-slate-200 block mb-1 uppercase">Remplacer Statuts</span>
+                    <input type="file" name="doc_statuts_file" onchange="previewUploadName(this, 'edit-name-statuts')" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+                    <div id="edit-name-statuts" class="text-xs text-sky-400 font-semibold truncate mt-1">Sélectionner un nouveau fichier</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-[#070E15] border-t border-[#1E3A52] flex justify-end gap-3">
+            <button type="button" onclick="toggleModalEdit(false)" class="px-5 py-2.5 rounded-xl bg-[#101F30] hover:bg-[#162B42] text-slate-300 font-bold text-xs cursor-pointer">Annuler</button>
+            <button type="submit" class="px-6 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-600 text-white font-black text-xs uppercase cursor-pointer">Mettre à Jour</button>
+        </div>
+    </form>
+</div>
+
+<!-- ========================================== -->
+<!-- MODALES DETAIL FACTURE & REGLEMENT -->
+<!-- ========================================== -->
+<div id="modal-facture-detail" class="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#0C1926] border border-[#1E3A52] rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="flex items-center justify-between p-4 border-b border-[#1E3A52] bg-[#070E15]">
+            <h3 id="df-num" class="font-black text-sm text-white font-mono uppercase">FACTURE</h3>
+            <button onclick="fermerModalFactureDetail()" class="text-slate-400 hover:text-white cursor-pointer"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="p-5 overflow-y-auto space-y-4 text-xs">
+            <div class="border border-[#1E3A52] rounded-xl overflow-hidden">
+                <table class="w-full text-left font-mono">
+                    <thead class="bg-[#070E15] border-b border-[#1E3A52] text-[11px] font-bold text-slate-300">
+                        <tr><th class="p-2.5">Produit</th><th class="p-2.5 text-center">Qté</th><th class="p-2.5 text-right">P.U</th><th class="p-2.5 text-right">Total TTC</th></tr>
+                    </thead>
+                    <tbody id="df-lignes-body" class="divide-y divide-[#182C40]"></tbody>
+                </table>
+            </div>
+            <div class="flex justify-end pt-2 font-mono">
+                <div class="w-60 space-y-1.5 bg-[#070E15] p-3 rounded-xl border border-[#1E3A52]">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-300">Total HT :</span>
+                        <span id="df-ht" class="font-bold text-white">0.00 MAD</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-300">TVA :</span>
+                        <span id="df-tva" class="font-bold text-white">0.00 MAD</span>
+                    </div>
+                    <div class="border-t border-[#182C40] pt-1.5 flex justify-between items-center">
+                        <span class="font-black text-xs uppercase text-slate-200">Total TTC :</span>
+                        <span id="df-ttc" class="font-black text-sm text-sky-400">0.00 MAD</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="p-4 border-t border-[#1E3A52] flex justify-between bg-[#070E15]">
+            <a id="df-print-btn" href="#" target="_blank" class="px-4 py-2 bg-sky-700 hover:bg-sky-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5">
+                <i data-lucide="printer" class="w-4 h-4"></i> Imprimer
+            </a>
+            <button onclick="fermerModalFactureDetail()" class="px-4 py-2 bg-[#101F30] text-slate-300 rounded-xl text-xs font-bold cursor-pointer">Fermer</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-encaissement-detail" class="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#0C1926] border border-[#1E3A52] rounded-3xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-[#1E3A52] bg-[#070E15]">
+            <h3 class="font-black text-sm uppercase text-white">Reçu de Règlement</h3>
+            <button onclick="fermerModalEncaissementDetail()" class="text-slate-400 hover:text-white cursor-pointer"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="p-5 space-y-3.5 text-xs">
+            <div class="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                <span class="text-[10.5px] uppercase font-bold text-slate-300 block mb-0.5">Montant Reçu</span>
+                <h2 id="de-montant" class="text-xl font-black text-emerald-400 font-mono">+0.00 MAD</h2>
+            </div>
+            <div class="bg-[#070E15] p-3 rounded-xl border border-[#1E3A52] space-y-1.5 text-slate-200">
+                <div class="flex justify-between"><span class="text-slate-400">Mode :</span><span id="de-mode" class="font-bold">--</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Référence :</span><span id="de-ref" class="font-mono font-bold">--</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Description :</span><span id="de-desc" class="font-semibold text-right">--</span></div>
+            </div>
+        </div>
+        <div class="p-4 border-t border-[#1E3A52] flex justify-between bg-[#070E15]">
+            <a id="de-print-btn" href="#" target="_blank" class="px-4 py-2 bg-sky-700 hover:bg-sky-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5">
+                <i data-lucide="printer" class="w-4 h-4"></i> Imprimer
+            </a>
+            <button onclick="fermerModalEncaissementDetail()" class="px-4 py-2 bg-[#101F30] text-slate-300 rounded-xl text-xs font-bold cursor-pointer">Fermer</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function getClientData() {
+        const scriptEl = document.getElementById('client-raw-data');
+        if (!scriptEl) return {};
+        try {
+            return JSON.parse(scriptEl.textContent);
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function toggleOptionMenu(e) {
+        if (e) e.stopPropagation();
+        const drop = document.getElementById('clientOptionsDropdown');
+        if (drop) drop.classList.toggle('hidden');
+    }
+
+    function fermerOptionMenu() {
+        const drop = document.getElementById('clientOptionsDropdown');
+        if (drop) drop.classList.add('hidden');
+    }
+
+    document.addEventListener('click', (e) => {
+        const drop = document.getElementById('clientOptionsDropdown');
+        if (drop && !e.target.closest('#clientOptionsDropdown') && !e.target.closest('button[onclick*="toggleOptionMenu"]')) {
+            drop.classList.add('hidden');
+        }
+    });
+
+    function toggleModalEdit(show) {
+        document.getElementById('modalEditClient').classList.toggle('hidden', !show);
+        if (show) {
+            chargerDonneesDansModal();
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function chargerDonneesDansModal() {
+        const data = getClientData();
+        const type = data.type_client || 'Entreprise';
+        
+        document.getElementById('edit_cl_type').value = type;
+        document.getElementById('edit_code').value = data.code || '';
+        document.getElementById('edit_statut').value = data.statut || 'ACTIF';
+        document.getElementById('edit_telephone').value = data.telephone || '';
+        document.getElementById('edit_ice').value = data.ice || '';
+        document.getElementById('edit_plafond').value = data.plafond !== undefined ? data.plafond : 0.0;
+        document.getElementById('edit_solde').value = data.solde !== undefined ? data.solde : 0.0;
+
+        const nomComplet = (data.nom || '').trim();
+        if (type === 'Particulier') {
+            const parties = nomComplet.split(' ').filter(Boolean);
+            if (parties.length > 1) {
+                document.getElementById('edit_nom_part').value = parties[0].toUpperCase();
+                document.getElementById('edit_prenom_part').value = parties.slice(1).join(' ');
+            } else {
+                document.getElementById('edit_nom_part').value = nomComplet.toUpperCase();
+                document.getElementById('edit_prenom_part').value = '';
+            }
+            document.getElementById('edit_nom_entreprise').value = '';
+        } else {
+            document.getElementById('edit_nom_entreprise').value = nomComplet.toUpperCase();
+            document.getElementById('edit_nom_part').value = '';
+            document.getElementById('edit_prenom_part').value = '';
+        }
+
+        adapterChampsEdit();
+    }
+
+    function ouvrirModalModifierClient() {
+        toggleModalEdit(true);
+    }
+
+    function adapterChampsEdit() {
+        const type = document.getElementById('edit_cl_type').value;
+        const isPart = (type === 'Particulier');
+
+        document.getElementById('edit_box_entreprise').classList.toggle('hidden', isPart);
+        document.getElementById('edit_box_particulier').classList.toggle('hidden', !isPart);
+        document.getElementById('edit_label_ice').innerText = isPart ? 'N° CIN' : 'N° ICE';
+        document.getElementById('edit_label_doc1').innerText = isPart ? 'Remplacer Copie CIN' : 'Remplacer RC';
+        document.getElementById('edit_box_doc2').classList.toggle('hidden', isPart);
+    }
+
+    function previewUploadName(input, labelId) {
+        const el = document.getElementById(labelId);
+        if (input.files && input.files[0]) {
+            el.innerText = 'Sélectionné : ' + input.files[0].name;
+        }
+    }
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.className = "tab-btn px-4 py-2 rounded-lg transition text-slate-400 text-xs";
+        });
+
+        const target = document.getElementById(tabId);
+        if (target) target.classList.remove('hidden');
+
+        const activeBtn = document.getElementById('btn-' + tabId);
+        if (activeBtn) activeBtn.className = "tab-btn px-4 py-2 rounded-lg transition bg-[#101F30] text-white shadow-xs font-bold text-xs";
+    }
+
+    function afficherDetailFacture(f) {
+        document.getElementById('df-num').innerText = 'FACTURE N° ' + f.numero_facture;
+        document.getElementById('df-ht').innerText = Number(f.montant_ht).toFixed(2) + ' MAD';
+        document.getElementById('df-tva').innerText = Number(f.montant_tva).toFixed(2) + ' MAD';
+        document.getElementById('df-ttc').innerText = Number(f.montant_ttc).toFixed(2) + ' MAD';
+
+        const tbody = document.getElementById('df-lignes-body');
+        tbody.innerHTML = '';
+        (f.lignes || []).forEach(l => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="p-2.5 text-white">${l.produit}</td><td class="p-2.5 text-center text-slate-200">${l.qte}</td><td class="p-2.5 text-right text-slate-200">${Number(l.pu).toFixed(2)}</td><td class="p-2.5 text-right font-bold text-sky-400">${Number(l.total_ttc || (l.qte * l.pu)).toFixed(2)} MAD</td>`;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('df-print-btn').href = '/factures/' + f.id + '/imprimer';
+        document.getElementById('modal-facture-detail').classList.remove('hidden');
+    }
+
+    function fermerModalFactureDetail() {
+        document.getElementById('modal-facture-detail').classList.add('hidden');
+    }
+
+    function afficherDetailEncaissement(e) {
+        document.getElementById('de-montant').innerText = '+' + Number(e.montant).toFixed(2) + ' MAD';
+        document.getElementById('de-mode').innerText = e.mode_paiement;
+        document.getElementById('de-ref').innerText = e.reference || '—';
+        document.getElementById('de-desc').innerText = e.description || 'Aucune remarque.';
+        document.getElementById('de-print-btn').href = '/encaissements/' + e.id + '/imprimer';
+        document.getElementById('modal-encaissement-detail').classList.remove('hidden');
+    }
+
+    function fermerModalEncaissementDetail() {
+        document.getElementById('modal-encaissement-detail').classList.add('hidden');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.facture-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('.actions-cell')) return;
+                const payloadScript = row.querySelector('.facture-payload');
+                if (payloadScript) afficherDetailFacture(JSON.parse(payloadScript.textContent));
+            });
+        });
+
+        document.querySelectorAll('.encaissement-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('.actions-cell')) return;
+                const payloadScript = row.querySelector('.encaissement-payload');
+                if (payloadScript) afficherDetailEncaissement(JSON.parse(payloadScript.textContent));
+            });
+        });
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+</script>

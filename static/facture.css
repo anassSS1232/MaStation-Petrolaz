@@ -1,0 +1,418 @@
+/* ==========================================================================
+   FACTURE PETROLAZ - STYLES OFFICIELS & IMPRESSION A4
+   ========================================================================== */
+
+/* 1. CONFIGURATION DE LA PAGE & SUPPRESSION DES EN-TÊTES NAVIGATEUR */
+@page {
+    size: A4 portrait;
+    /* margin: 0 supprime automatiquement la date, l'heure et l'URL du navigateur */
+    margin: 0;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #0f172a;
+    background-color: #ffffff;
+    font-size: 13.5px;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+/* 2. BOUTONS DE PRÉVISUALISATION (Masqués à l'impression) */
+.no-print {
+    max-width: 860px;
+    margin: 15px auto 20px auto;
+    padding: 12px 20px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.btn-print {
+    background: #0f172a;
+    color: #ffffff;
+    border: none;
+    padding: 10px 22px;
+    border-radius: 7px;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.15s ease;
+}
+
+.btn-print:hover {
+    background: #000000;
+}
+
+.btn-close {
+    background: #e2e8f0;
+    color: #334155;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 7px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.btn-close:hover {
+    background: #cbd5e1;
+}
+
+/* 3. STRUCTURE DE LA PAGE A4 */
+.facture-container,
+.page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 14mm 16mm 12mm 16mm;
+    min-height: 297mm; /* Hauteur exacte A4 */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.page-content,
+.facture-body {
+    flex: 1;
+}
+
+/* 4. EN-TÊTE : LOGO GRAND & TITRE "FACTURE" */
+.top-header,
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 20px;
+    margin-bottom: 25px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.company-logo,
+.logo {
+    height: 105px;             /* Logo nettement agrandi */
+    max-height: 210px;
+    max-width: 480px;
+    object-fit: contain;
+    display: block;
+}
+
+.facture-badge-box,
+.facture-title-wrap {
+    text-align: right;
+}
+
+.facture-title,
+.titre-facture {
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #0f172a;
+    line-height: 1.1;
+    margin-bottom: 4px;
+}
+
+.facture-ref {
+    font-size: 13px;
+    font-weight: 800;
+    color: #475569;
+}
+
+/* 5. COORDONNÉES CLIENT & RÉFÉRENCES FACTURE */
+.meta-grid,
+.meta-section {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 22px;
+    margin-bottom: 28px;
+}
+
+.meta-col,
+.card-client {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #0f172a;
+    padding: 14px 18px;
+    border-radius: 8px;
+    line-height: 1.6;
+}
+
+.meta-title,
+.label-to,
+.client-info .label {
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #64748b;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+}
+
+.client-name,
+.client-info .nom {
+    font-size: 16px;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: #0f172a;
+    margin-bottom: 4px;
+}
+
+.client-details {
+    font-size: 13.5px;
+    color: #334155;
+}
+
+.meta-right,
+.card-facture-info {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 14px 18px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    font-size: 14px;
+    line-height: 1.8;
+}
+
+.meta-right div,
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+
+.meta-right div:last-child,
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-row .lbl {
+    font-weight: 800;
+    color: #475569;
+    text-transform: uppercase;
+    font-size: 12.5px;
+}
+
+.info-row .val {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+/* 6. TABLEAU DES ARTICLES / CARBURANTS */
+.items-table,
+.table-articles {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 5px;
+}
+
+.items-table th,
+.table-articles thead th {
+    font-size: 13px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 10px;
+    background-color: #f8fafc;
+    border-top: 3px solid #0f172a;
+    border-bottom: 2.5px solid #0f172a;
+    color: #0f172a;
+}
+
+.items-table td,
+.table-articles tbody td {
+    padding: 13px 10px;
+    font-size: 14px;
+    border-bottom: 1px solid #0f172a;
+    color: #000000;
+}
+
+.col-desc, .th-desc { text-align: left; width: 46%; }
+.col-qty,  .th-qte  { text-align: center; width: 14%; }
+.col-pu,   .th-pu   { text-align: right; width: 20%; }
+.col-tot,  .th-tot  { text-align: right; width: 20%; }
+
+.td-desc { text-align: left; font-weight: 600; }
+.td-qte  { text-align: center; font-weight: 700; }
+.td-pu   { text-align: right; font-weight: 700; }
+.td-tot  { text-align: right; font-weight: 800; }
+
+/* 7. BLOC DU BAS : CACHET & TOTAUX */
+.bottom-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-top: 25px;
+    gap: 20px;
+}
+
+/* Cadre réservé Cachet & Signature */
+.cachet-box {
+    flex: 1;
+    max-width: 320px;
+    height: 145px;
+    border: 1.5px dashed #94a3b8;
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background: #fafafa;
+}
+
+.cachet-box .cachet-title {
+    font-size: 11px;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cachet-box .cachet-sub {
+    font-size: 11px;
+    color: #94a3b8;
+    text-align: center;
+    font-style: italic;
+}
+
+/* Table des Totaux */
+.totals-wrap,
+.totals-section {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.totals-table {
+    width: 320px;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.totals-table td {
+    padding: 5px 6px;
+}
+
+.totals-table .label {
+    text-align: right;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #334155;
+    padding-right: 15px;
+}
+
+.totals-table .amount,
+.totals-table .value {
+    text-align: right;
+    font-weight: 800;
+    font-size: 14.5px;
+    white-space: nowrap;
+    color: #0f172a;
+}
+
+.totals-table .row-ttc,
+.row-total-ttc {
+    border-top: 2.5px solid #0f172a;
+}
+
+.totals-table .row-ttc td,
+.row-total-ttc td {
+    padding-top: 10px;
+}
+
+.totals-table .row-ttc .label,
+.row-total-ttc .label {
+    font-size: 16px;
+    font-weight: 900;
+    color: #0f172a;
+}
+
+.totals-table .row-ttc .amount,
+.row-total-ttc .value {
+    font-size: 19px;
+    font-weight: 900;
+    color: #0f172a;
+}
+
+/* 8. ARRÊTÉ EN LETTRES */
+.somme-lettres,
+.lettres-box {
+    margin-top: 22px;
+    padding: 10px 14px;
+    background-color: #f8fafc;
+    border-left: 4px solid #0f172a;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #334155;
+}
+
+.somme-lettres strong,
+.lettres-box strong {
+    color: #0f172a;
+    text-transform: capitalize;
+}
+
+/* 9. PIED DE PAGE LÉGAL (FIXE EN BAS) */
+.footer-mentions,
+.footer {
+    margin-top: auto;
+    padding-top: 22px;
+    text-align: center;
+    font-size: 10px;
+    line-height: 1.55;
+    color: #475569;
+    border-top: 1px solid #e2e8f0;
+}
+
+.footer-mentions .company-line,
+.footer .company-name {
+    font-weight: 900;
+    font-size: 11px;
+    color: #0f172a;
+}
+
+/* 10. RÈGLES SPÉCIALES D'IMPRESSION */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+    }
+
+    .facture-container,
+    .page {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: 297mm !important;
+        padding: 12mm 15mm 10mm 15mm !important;
+    }
+
+    /* Évite toute coupure accidentelle sur 2 pages */
+    .table-articles,
+    .items-table,
+    .bottom-section,
+    .totals-wrap,
+    .footer {
+        page-break-inside: avoid;
+    }
+}

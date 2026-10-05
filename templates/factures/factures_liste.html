@@ -1,0 +1,914 @@
+<style>
+    #factures-table-body tr:nth-last-child(-n+3) .dropdown-menu-facture {
+        bottom: 100%;
+        top: auto;
+        margin-bottom: 0.4rem;
+        margin-top: 0;
+    }
+</style>
+
+<!-- DONNÉES CLIENTS BRUTES POUR JAVASCRIPT -->
+<script type="application/json" id="clients-raw-data">
+    {{ clients | tojson }}
+</script>
+
+<div class="max-w-7xl mx-auto space-y-4 animate-in fade-in duration-150">
+    <!-- HEADER TOP -->
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-[#0E1B26] p-4 rounded-2xl border border-slate-200/90 dark:border-[#183042] shadow-xs">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center font-bold">
+                <i data-lucide="file-text" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="font-black text-slate-900 dark:text-white text-base uppercase tracking-wider">Toutes les Factures Clients</h1>
+                <p class="text-xs text-slate-600 dark:text-slate-300 font-semibold">Affichage : <strong id="live-count-factures" class="text-sky-500 font-mono text-sm">{{ factures|length }}</strong> facture(s)</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3 font-mono text-xs">
+            <div class="bg-slate-50 dark:bg-[#070E15] px-3.5 py-2 rounded-xl border border-slate-200 dark:border-[#183042]">
+                <span class="text-[11px] text-slate-500 dark:text-slate-400 uppercase block font-sans font-bold">Total HT</span>
+                <strong id="live-total-ht" class="text-slate-900 dark:text-slate-100 text-sm font-black">0.00 DH</strong>
+            </div>
+            <div class="bg-slate-50 dark:bg-[#070E15] px-3.5 py-2 rounded-xl border border-slate-200 dark:border-[#183042]">
+                <span class="text-[11px] text-slate-500 dark:text-slate-400 uppercase block font-sans font-bold">Total TTC</span>
+                <strong id="live-total-ttc" class="text-[#E5A842] text-sm font-black">0.00 DH</strong>
+            </div>
+
+            <button onclick="ouvrirModalNouvelleFacture()" class="flex items-center justify-center px-5 py-2.5 rounded-xl cursor-pointer bg-[#E5A842] hover:bg-[#d69632] text-slate-950 font-black text-xs uppercase tracking-wider shadow-md transition">
+                Nouvelle Facture
+            </button>
+        </div>
+    </div>
+
+    <!-- BARRE DE RECHERCHE & FILTRES -->
+    <div class="bg-white dark:bg-[#0E1B26] p-3.5 rounded-2xl border border-slate-200/90 dark:border-[#183042] shadow-xs space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
+            <div class="sm:col-span-5 relative">
+                <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                <input type="text" id="live-search-q" value="{{ q }}" oninput="filtrerFacturesEnDirect()" 
+                       class="w-full bg-slate-50 dark:bg-[#070E15] border border-slate-300 dark:border-[#1E3A52] rounded-xl pl-10 pr-3.5 py-2 text-sm font-semibold text-slate-900 dark:text-white placeholder-slate-400 outline-none transition">
+            </div>
+
+            <div class="sm:col-span-3 flex items-center gap-2 bg-slate-50 dark:bg-[#070E15] border border-slate-300 dark:border-[#1E3A52] rounded-xl px-3 py-1.5">
+                <span class="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 shrink-0">Du:</span>
+                <input type="date" id="live-date-debut" value="{{ val_debut }}" oninput="filtrerFacturesEnDirect()" onchange="filtrerFacturesEnDirect()"
+                       class="w-full bg-transparent border-0 text-sm font-bold font-mono text-slate-900 dark:text-white outline-none cursor-pointer">
+            </div>
+
+            <div class="sm:col-span-3 flex items-center gap-2 bg-slate-50 dark:bg-[#070E15] border border-slate-300 dark:border-[#1E3A52] rounded-xl px-3 py-1.5">
+                <span class="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 shrink-0">Au:</span>
+                <input type="date" id="live-date-fin" value="{{ val_fin }}" oninput="filtrerFacturesEnDirect()" onchange="filtrerFacturesEnDirect()"
+                       class="w-full bg-transparent border-0 text-sm font-bold font-mono text-slate-900 dark:text-white outline-none cursor-pointer">
+            </div>
+
+            <div class="sm:col-span-1 flex items-center justify-end">
+                <button type="button" onclick="resetFiltreFacturesSemaine()" title="Réinitialiser à la dernière semaine" 
+                        class="w-full py-2 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center justify-center transition">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-[#183042]/50 text-xs">
+            <span class="text-slate-500 dark:text-slate-400 font-bold text-xs">Période :</span>
+            <button type="button" onclick="setPeriodeFactures(7)" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-[#132738] hover:bg-sky-500/20 text-slate-800 dark:text-slate-200 font-bold text-xs transition">7 derniers jours</button>
+            <button type="button" onclick="setPeriodeFactures(30)" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-[#132738] hover:bg-sky-500/20 text-slate-800 dark:text-slate-200 font-bold text-xs transition">30 derniers jours</button>
+            <button type="button" onclick="setPeriodeFactures('mois')" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-[#132738] hover:bg-sky-500/20 text-slate-800 dark:text-slate-200 font-bold text-xs transition">Ce mois</button>
+            <button type="button" onclick="setPeriodeFactures('tout')" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-[#132738] hover:bg-sky-500/20 text-slate-800 dark:text-slate-200 font-bold text-xs transition">Tout afficher</button>
+        </div>
+    </div>
+
+    <!-- TABLEAU DES FACTURES -->
+    <div class="bg-white dark:bg-[#0E1B26] rounded-2xl border border-slate-200/90 dark:border-[#183042] shadow-xs overflow-hidden flex flex-col">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[800px]">
+                <thead class="bg-slate-50 dark:bg-[#070E15] border-b border-slate-200 dark:border-[#183042] text-xs font-black uppercase text-slate-700 dark:text-slate-300">
+                    <tr>
+                        <th class="py-3 px-4">N° Facture</th>
+                        <th class="py-3 px-4">Date</th>
+                        <th class="py-3 px-4">Client</th>
+                        <th class="py-3 px-4">Mode</th>
+                        <th class="py-3 px-4 text-right">Total HT</th>
+                        <th class="py-3 px-4 text-right">Total TTC</th>
+                        <th class="py-3 px-4 text-right w-24">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="factures-table-body">
+                    {% for f in factures %}
+                    <tr class="facture-row cursor-pointer border-b border-slate-100 dark:border-[#183042]/50 hover:bg-sky-50/50 dark:hover:bg-[#132738]/50 transition text-sm group"
+                        data-search="{{ f.search_blob }}"
+                        data-date="{{ f.date_facture }}"
+                        data-ht="{{ f.montant_ht }}"
+                        data-ttc="{{ f.montant_ttc }}">
+                        <script type="application/json" class="facture-row-payload">{{ f.json_payload|safe }}</script>
+
+                        <td class="py-3.5 px-4 font-mono font-black text-sky-600 dark:text-sky-400 group-hover:underline text-[13.5px]">
+                            {{ f.numero_facture }}
+                        </td>
+                        <td class="py-3.5 px-4 font-mono font-bold text-slate-800 dark:text-slate-100 text-[13.5px]">
+                            {{ f.date_affichee }}
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <div class="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-[14px]">
+                                <span>{{ f.client_nom }}</span>
+                                <span class="text-[11px] font-mono font-bold px-2 py-0.5 rounded {% if f.is_passager %}bg-slate-500/20 text-slate-300{% else %}bg-amber-500/15 text-[#E5A842]{% endif %}">
+                                    {{ f.client_code }}
+                                </span>
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4 text-slate-700 dark:text-slate-200 font-bold text-[13px]">
+                            {{ f.mode_paiement or '—' }}
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-mono font-bold text-slate-800 dark:text-slate-200 text-[13.5px]">
+                            {{ "%.2f"|format(f.montant_ht) }} MAD
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-mono font-black text-amber-600 dark:text-[#E5A842] text-[14.5px]">
+                            {{ "%.2f"|format(f.montant_ttc) }} <span class="text-[11px] font-sans font-semibold text-slate-400">MAD</span>
+                        </td>
+                        <td class="py-3.5 px-4 text-right whitespace-nowrap actions-cell" onclick="event.stopPropagation()">
+                            <div class="relative inline-block text-left actions-dropdown-container">
+                                <button type="button" 
+                                        onclick="toggleMenuFacture(event, 'menu-facture-{{ f.id }}')" 
+                                        class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#132738] dark:hover:bg-[#18354c] text-slate-700 dark:text-slate-200 flex items-center justify-center transition shadow-2xs cursor-pointer"
+                                        title="Actions">
+                                    <i data-lucide="more-vertical" class="w-4 h-4"></i>
+                                </button>
+
+                                <div id="menu-facture-{{ f.id }}" 
+                                     class="dropdown-menu-facture hidden absolute right-0 mt-1.5 w-48 rounded-2xl bg-white dark:bg-[#0E1B26] border border-slate-200/90 dark:border-[#183042] shadow-2xl py-1.5 z-50 text-left">
+                                    <button type="button" 
+                                            onclick="ouvrirDetailDepuisLigne(this); fermerTousLesMenusFactures();" 
+                                            class="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-[#132738] flex items-center gap-2.5 transition cursor-pointer">
+                                        <i data-lucide="eye" class="w-4 h-4 text-sky-500"></i>
+                                        <span>Voir les Détails</span>
+                                    </button>
+                                    <button type="button" 
+                                            onclick="ouvrirModifierDepuisLigne(this); fermerTousLesMenusFactures();" 
+                                            class="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-[#132738] flex items-center gap-2.5 transition cursor-pointer">
+                                        <i data-lucide="edit-3" class="w-4 h-4 text-[#E5A842]"></i>
+                                        <span>Modifier</span>
+                                    </button>
+                                    <a href="/factures/{{ f.id }}/imprimer" target="_blank" onclick="fermerTousLesMenusFactures()"
+                                       class="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-[#132738] flex items-center gap-2.5 transition cursor-pointer">
+                                        <i data-lucide="printer" class="w-4 h-4 text-emerald-500"></i>
+                                        <span>Imprimer Facture</span>
+                                    </a>
+                                    {% if f.client_id %}
+                                    <div class="my-1 border-t border-slate-100 dark:border-[#183042]/60"></div>
+                                    <a href="/clients/{{ f.client_id }}?tab=factures" onclick="fermerTousLesMenusFactures()"
+                                       class="w-full px-3.5 py-2 text-left text-xs font-bold text-amber-500 hover:bg-amber-500/10 flex items-center gap-2.5 transition cursor-pointer">
+                                        <i data-lucide="external-link" class="w-4 h-4 text-amber-500"></i>
+                                        <span>Dossier Client</span>
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-12 text-slate-400 text-sm font-semibold italic">Aucune facture enregistrée.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="factures-empty-state" class="hidden text-center py-12 text-slate-400 text-sm font-semibold italic">
+            Aucune facture ne correspond à ces critères de recherche.
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL CRÉATION / MODIFICATION FACTURE      -->
+<!-- (DESIGN ÉPURÉ STYLE "NOUVEAU CLIENT")      -->
+<!-- ========================================== -->
+<div id="modal-nouvelle-facture" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xs z-50 hidden flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-[#0C1926] w-full max-w-4xl rounded-3xl border border-[#1E3A52] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        
+        <!-- EN-TÊTE MODAL : TITRE CLAIR + N°/DATE/HEURE ULTRA MODERNES + BOUTON FERMER -->
+        <div class="px-6 py-4 border-b border-[#1E3A52] flex flex-wrap justify-between items-center bg-[#070E15] gap-3">
+            
+            <!-- TITRE DE L'INTERFACE À GAUCHE -->
+            <div class="flex items-center gap-3">
+                <h3 id="nf-modal-titre-label" class="font-black text-white text-base uppercase tracking-wider">
+                    Nouvelle Facture
+                </h3>
+            </div>
+
+            <!-- BLOCS MODERNES CENTRAUX : N° FACTURE + DATE + HEURE -->
+            <div class="flex items-center gap-2.5 flex-wrap">
+                <!-- N° Facture Moderne -->
+                <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0C1926] border border-[#1E3A52] shadow-xs">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">N°</span>
+                    <input type="text" id="nf-numero" value="{{ prochain_numero }}" class="w-16 bg-transparent font-mono font-black text-sky-400 text-xs outline-none uppercase">
+                </div>
+
+                <!-- Date Facture Moderne -->
+                <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0C1926] border border-[#1E3A52] shadow-xs">
+                    <i data-lucide="calendar" class="w-3.5 h-3.5 text-amber-400"></i>
+                    <input type="date" id="nf-date-facture" value="{{ today_iso }}" class="bg-transparent font-mono font-bold text-white text-xs outline-none cursor-pointer">
+                </div>
+
+                <!-- Heure Live Moderne -->
+                <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0C1926] border border-[#1E3A52] shadow-xs">
+                    <i data-lucide="clock" class="w-3.5 h-3.5 text-sky-400"></i>
+                    <span id="nf-live-time" class="font-mono text-xs font-bold text-slate-300">00:00:00</span>
+                </div>
+
+                <!-- BOUTON FERMER UNIQUE (SANS BOUTON ORANGE D'AGRANDISSEMENT) -->
+                <button type="button" onclick="fermerModalNouvelleFacture()" class="text-slate-400 hover:text-white cursor-pointer ml-1 p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- FORMULAIRE AVEC TITRES DANS LES BOÎTES -->
+        <form id="form-creer-facture" method="POST" action="/factures/creer" onsubmit="return validerAvantSoumission(event)" class="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
+            <input type="hidden" name="facture_id" id="nf-hidden-id" value="">
+            <input type="hidden" name="numero_facture" id="nf-hidden-numero">
+            <input type="hidden" name="date_facture" id="nf-hidden-date">
+            <input type="hidden" name="client_id" id="nf-hidden-client-id" value="">
+            <input type="hidden" name="destinataire_info" id="nf-hidden-destinataire-info" value="">
+            <input type="hidden" name="montant_ht" id="nf-hidden-ht" value="0">
+            <input type="hidden" name="montant_tva" id="nf-hidden-tva" value="0">
+            <input type="hidden" name="montant_remise" id="nf-hidden-remise" value="0">
+            <input type="hidden" name="montant_ttc" id="nf-hidden-ttc" value="0">
+            <input type="hidden" name="lignes_json" id="nf-hidden-lignes" value="[]">
+
+            <!-- SECTION 1 : COORDONNÉES CLIENT / DESTINATAIRE -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <!-- Sélection Client -->
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Client Enregistré</label>
+                    <select id="nf-select-client" onchange="surChangementClient(this.value)" class="w-full bg-transparent font-bold text-white text-xs outline-none cursor-pointer">
+                        <option value="" class="bg-[#0C1926] text-white">-- Particulier / Divers --</option>
+                        {% for c in clients %}
+                        <option value="{{ c.id }}" class="bg-[#0C1926] text-white">{{ c.nom }} ({{ c.code }})</option>
+                        {% endfor %}
+                        <option value="autre" class="bg-[#0C1926] text-white">👤 Autre (Saisie libre)</option>
+                    </select>
+                </div>
+
+                <!-- Nom / Raison Sociale -->
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Nom / Raison Sociale *</label>
+                    <input type="text" name="destinataire_nom" id="nf-nom"  required class="w-full bg-transparent font-bold text-white text-xs outline-none uppercase placeholder-slate-600">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
+                <!-- ICE -->
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">N° ICE</label>
+                    <input type="text" name="destinataire_ice" id="nf-ice"  class="w-full bg-transparent font-mono text-white text-xs outline-none uppercase placeholder-slate-600">
+                </div>
+
+                <!-- Téléphone -->
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Téléphone</label>
+                    <input type="text" name="destinataire_tel" id="nf-tel"  class="w-full bg-transparent font-mono text-white text-xs outline-none placeholder-slate-600">
+                </div>
+
+                <!-- Adresse -->
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Adresse</label>
+                    <input type="text" name="destinataire_adresse" id="nf-adresse" value="Oujda" class="w-full bg-transparent font-semibold text-white text-xs outline-none placeholder-slate-600">
+                </div>
+
+                <!-- Mode de Règlement -->
+                <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                    <label class="absolute text-[10px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Règlement</label>
+                    <select name="mode_paiement" id="nf-mode-paiement" class="w-full bg-transparent font-bold text-white text-xs outline-none cursor-pointer">
+                        <option value="Virement" class="bg-[#0C1926]">Virement</option>
+                        <option value="Espèces" class="bg-[#0C1926]">Espèces</option>
+                        <option value="Chèque" class="bg-[#0C1926]">Chèque</option>
+                        <option value="Traite" class="bg-[#0C1926]">Traite</option>
+                        <option value="Carte Bancaire" class="bg-[#0C1926]">Carte Bancaire</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- SECTION 2 : AJOUT DE LIGNE / DESCRIPTION -->
+            <div class="p-3.5 rounded-2xl bg-[#070E15] border border-[#1E3A52] space-y-3">
+                <div class="flex items-center justify-between pb-1 border-b border-[#182C40]">
+                    <span class="font-black uppercase tracking-wider text-[11px] text-sky-400 flex items-center gap-1.5">
+                        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+                        <span>Lignes de Consommation</span>
+                    </span>
+                    <div class="text-[11px] font-mono text-slate-300">
+                        Tarif P.U Détecté : <strong id="nf-tarif-affiche" class="text-amber-400 font-black">14.000 MAD</strong>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
+                    <!-- Date Conso -->
+                    <div class="sm:col-span-3 relative bg-[#0C1926] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                        <label class="absolute text-[9.5px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Date</label>
+                        <input type="date" id="nf-ligne-date" value="{{ today_iso }}" onchange="rechargerTarifLigne()" class="w-full bg-transparent font-mono font-bold text-white text-xs outline-none cursor-pointer">
+                    </div>
+
+                    <!-- Produit -->
+                    <div class="sm:col-span-4 relative bg-[#0C1926] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                        <label class="absolute text-[9.5px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Produit</label>
+                        <select id="nf-ligne-produit" onchange="rechargerTarifLigne()" class="w-full bg-transparent font-bold text-white text-xs outline-none cursor-pointer">
+                            <option value="Gasoil" class="bg-[#0C1926]">Gasoil</option>
+                            <option value="SSP" class="bg-[#0C1926]">SSP</option>
+                            <option value="10W40 (55 MAD)" class="bg-[#0C1926]">10W40 (55 MAD)</option>
+                            <option value="10W40 (250 MAD)" class="bg-[#0C1926]">10W40 (250 MAD)</option>
+                            <option value="15W40 CF4 (42 MAD)" class="bg-[#0C1926]">15W40 CF4 (42 MAD)</option>
+                            <option value="15W40 CF4 (200 MAD)" class="bg-[#0C1926]">15W40 CF4 (200 MAD)</option>
+                            <option value="SAE 50 (185 MAD)" class="bg-[#0C1926]">SAE 50 (185 MAD)</option>
+                            <option value="Lavage (40 MAD)" class="bg-[#0C1926]">Lavage (40 MAD)</option>
+                            <option value="Autre" class="bg-[#0C1926]">Autre</option>
+                        </select>
+                    </div>
+
+                    <!-- Quantité -->
+                    <div class="sm:col-span-2 relative bg-[#0C1926] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                        <label class="absolute text-[9.5px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Qté / Litres</label>
+                        <input type="number" id="nf-ligne-qte" step="0.01" value="0" class="w-full bg-transparent font-mono font-bold text-white text-xs outline-none">
+                    </div>
+
+                    <!-- Bouton Ajouter Ligne -->
+                    <div class="sm:col-span-3">
+                        <button type="button" onclick="insererLigneFacture()" class="w-full py-2.5 px-3 rounded-xl bg-sky-700 hover:bg-sky-600 text-white font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-1.5 transition cursor-pointer">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                            <span>Ajouter</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABLEAU DES LIGNES AJOUTÉES -->
+            <div class="border border-[#1E3A52] rounded-xl overflow-hidden bg-[#070E15]">
+                <table class="w-full text-left font-mono">
+                    <thead class="bg-[#0A141E] border-b border-[#1E3A52] text-[10.5px] font-black uppercase text-slate-300">
+                        <tr>
+                            <th class="p-2.5">Désignation</th>
+                            <th class="p-2.5 text-center">Volume</th>
+                            <th class="p-2.5 text-right">P.U TTC</th>
+                            <th class="p-2.5 text-right">Total TTC</th>
+                            <th class="p-2.5 text-center w-10">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="nf-lignes-body" class="divide-y divide-[#182C40] text-xs">
+                        <tr>
+                            <td colspan="5" class="p-5 text-center text-slate-500 font-semibold italic text-[11px]">Aucune ligne insérée pour le moment.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- TOTAUX & RECALCUL -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-end pt-1">
+                <div class="grid grid-cols-3 gap-2.5">
+                    <!-- Taux TVA -->
+                    <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                        <label class="absolute text-[9.5px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Taux TVA</label>
+                        <select name="taux_tva" id="nf-taux-tva" onchange="recalculerTotaux()" class="w-full bg-transparent font-bold text-white text-xs outline-none cursor-pointer">
+                            <option value="0.0" class="bg-[#0C1926]" selected>0%</option>
+                            <option value="10.0" class="bg-[#0C1926]">10%</option>
+                            <option value="20.0" class="bg-[#0C1926]">20%</option>
+                        </select>
+                    </div>
+
+                    <!-- Remise -->
+                    <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1 focus-within:border-sky-500">
+                        <label class="absolute text-[9.5px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Remise (%)</label>
+                        <input type="number" name="remise_pourcent" id="nf-remise-pourcent" value="0" min="0" max="100" step="0.5" oninput="recalculerTotaux()" class="w-full bg-transparent font-mono font-bold text-white text-xs outline-none">
+                    </div>
+
+                    <!-- Montant HT -->
+                    <div class="relative bg-[#070E15] border border-[#1E3A52] rounded-xl px-3 pt-3.5 pb-1">
+                        <label class="absolute text-[9.5px] font-bold text-slate-400 uppercase top-1 left-3 pointer-events-none">Montant HT</label>
+                        <div id="nf-affiche-ht" class="font-mono font-bold text-white text-xs pt-0.5">0.00 DH</div>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end">
+                    <div class="bg-[#070E15] px-5 py-2.5 rounded-xl border border-[#1E3A52] text-right min-w-[200px]">
+                        <span class="text-[10.5px] uppercase font-bold text-slate-400 block mb-0.5">Net à Payer TTC</span>
+                        <strong id="nf-affiche-ttc" class="font-mono text-xl font-black text-amber-400">0.00 MAD</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BOUTONS D'ACTION EXACTEMENT COMME "NOUVEAU CLIENT" -->
+            <div class="pt-4 border-t border-[#1E3A52] flex justify-end gap-3">
+                <button type="button" onclick="fermerModalNouvelleFacture()" class="px-5 py-2.5 rounded-xl bg-[#101F30] hover:bg-[#162B42] text-slate-300 font-bold text-xs cursor-pointer transition">
+                    Annuler
+                </button>
+                <button type="submit" id="nf-btn-submit" class="px-6 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider cursor-pointer shadow-md transition">
+                    Enregistrer
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL DÉTAILS FACTURE                      -->
+<!-- ========================================== -->
+<div id="modal-facture-detail" class="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#0C1926] border border-[#1E3A52] rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="flex items-center justify-between p-4 border-b border-[#1E3A52] bg-[#070E15]">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold">
+                    <i data-lucide="file-text" class="w-4 h-4"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 id="df-num" class="font-black text-sm text-white font-mono uppercase">FACTURE</h3>
+                        <span class="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 text-[10px] font-bold">Validée</span>
+                    </div>
+                    <p id="df-date" class="text-xs text-slate-400 font-mono">Date : --</p>
+                </div>
+            </div>
+            <button onclick="fermerModalFacture()" class="text-slate-400 hover:text-white cursor-pointer"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+
+        <div class="p-5 overflow-y-auto space-y-4 text-xs font-mono">
+            <div class="grid grid-cols-2 gap-3 bg-[#070E15] p-3.5 rounded-xl border border-[#1E3A52]">
+                <div>
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5 font-sans">Client</span>
+                    <p id="df-client" class="font-black text-white text-sm font-sans">--</p>
+                    <p id="df-client-code" class="text-xs text-amber-400 mt-1">Code : --</p>
+                    <p id="df-client-ice" class="text-xs text-slate-300 mt-0.5">ICE : --</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5 font-sans">Règlement</span>
+                    <p id="df-mode" class="font-bold text-slate-200 text-sm">Mode : --</p>
+                </div>
+            </div>
+
+            <div>
+                <div class="border border-[#1E3A52] rounded-xl overflow-hidden bg-[#070E15]">
+                    <table class="w-full text-left">
+                        <thead class="bg-[#0A141E] border-b border-[#1E3A52] text-[10.5px] font-bold text-slate-300 uppercase">
+                            <tr>
+                                <th class="p-2.5">Produit</th>
+                                <th class="p-2.5 text-center">Volume</th>
+                                <th class="p-2.5 text-right">P.U TTC</th>
+                                <th class="p-2.5 text-right">Total TTC</th>
+                            </tr>
+                        </thead>
+                        <tbody id="df-lignes-body" class="divide-y divide-[#182C40]"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="flex justify-end pt-1">
+                <div class="w-60 space-y-1.5 bg-[#070E15] p-3 rounded-xl border border-[#1E3A52]">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-300">Total HT :</span>
+                        <span id="df-ht" class="font-bold text-white">0.00 MAD</span>
+                    </div>
+                    <div id="df-remise-row" class="flex justify-between items-center text-xs text-rose-400 hidden">
+                        <span id="df-remise-label">Remise :</span>
+                        <span id="df-remise-val" class="font-bold">-0.00 MAD</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span id="df-tva-label" class="text-slate-300">TVA (0%) :</span>
+                        <span id="df-tva" class="font-bold text-white">0.00 MAD</span>
+                    </div>
+                    <div class="border-t border-[#182C40] pt-1.5 flex justify-between items-center">
+                        <span class="font-black text-slate-200 text-xs uppercase font-sans">Total TTC :</span>
+                        <span id="df-ttc" class="font-black text-sm text-amber-400">0.00 MAD</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-[#1E3A52] bg-[#070E15] flex items-center justify-between">
+            <a id="df-print-btn" href="#" target="_blank" class="px-4 py-2 bg-sky-700 hover:bg-sky-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 transition">
+                <i data-lucide="printer" class="w-4 h-4"></i>
+                <span>Imprimer</span>
+            </a>
+            <button onclick="fermerModalFacture()" class="px-4 py-2 bg-[#101F30] hover:bg-[#162B42] text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer">
+                Fermer
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- SCRIPTS JAVASCRIPT DU TEMPLATE             -->
+<!-- ========================================== -->
+<script>
+    const clientsData = JSON.parse(document.getElementById('clients-raw-data').textContent || '[]');
+    const prochainNumeroFactureDefaut = "{{ prochain_numero }}";
+    const dateAujourdhuiIso = "{{ today_iso }}";
+    let nouvellesLignes = [];
+    let puCourant = 14.0;
+
+    function updateLiveClock() {
+        const clockEl = document.getElementById('nf-live-time');
+        if (clockEl) {
+            const now = new Date();
+            clockEl.innerText = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+    }
+    setInterval(updateLiveClock, 1000);
+    updateLiveClock();
+
+    function toggleMenuFacture(event, menuId) {
+        event.stopPropagation();
+        const targetMenu = document.getElementById(menuId);
+        if (!targetMenu) return;
+
+        const isHidden = targetMenu.classList.contains('hidden');
+        fermerTousLesMenusFactures();
+
+        if (isHidden) {
+            targetMenu.classList.remove('hidden');
+        }
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function fermerTousLesMenusFactures() {
+        document.querySelectorAll('.dropdown-menu-facture').forEach(menu => {
+            menu.classList.add('hidden');
+        });
+    }
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.actions-dropdown-container')) {
+            fermerTousLesMenusFactures();
+        }
+    });
+
+    function filtrerFacturesEnDirect() {
+        fermerTousLesMenusFactures();
+        const q = (document.getElementById('live-search-q').value || '').toLowerCase().trim();
+        const dDebut = document.getElementById('live-date-debut').value;
+        const dFin = document.getElementById('live-date-fin').value;
+
+        const rows = document.querySelectorAll('.facture-row');
+        let countVisible = 0;
+        let sumHt = 0;
+        let sumTtc = 0;
+
+        rows.forEach(row => {
+            const searchBlob = row.getAttribute('data-search') || '';
+            const rowDate = row.getAttribute('data-date') || '';
+            const ht = parseFloat(row.getAttribute('data-ht')) || 0;
+            const ttc = parseFloat(row.getAttribute('data-ttc')) || 0;
+
+            let match = true;
+
+            if (q && !searchBlob.includes(q)) match = false;
+            if (match && dDebut && rowDate && rowDate < dDebut) match = false;
+            if (match && dFin && rowDate && rowDate > dFin) match = false;
+
+            if (match) {
+                row.style.display = '';
+                countVisible++;
+                sumHt += ht;
+                sumTtc += ttc;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        document.getElementById('live-count-factures').innerText = countVisible;
+        document.getElementById('live-total-ht').innerText = sumHt.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH';
+        document.getElementById('live-total-ttc').innerText = sumTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH';
+
+        const emptyEl = document.getElementById('factures-empty-state');
+        if (emptyEl) {
+            emptyEl.classList.toggle('hidden', countVisible > 0 || rows.length === 0);
+        }
+    }
+
+    function setPeriodeFactures(duree) {
+        const inputDeb = document.getElementById('live-date-debut');
+        const inputFin = document.getElementById('live-date-fin');
+        const today = new Date();
+
+        if (duree === 'tout') {
+            inputDeb.value = '';
+            inputFin.value = '';
+        } else if (duree === 'mois') {
+            const y = today.getFullYear();
+            const m = String(today.getMonth() + 1).padStart(2, '0');
+            inputDeb.value = `${y}-${m}-01`;
+            inputFin.value = today.toISOString().split('T')[0];
+        } else {
+            const past = new Date(today);
+            past.setDate(past.getDate() - parseInt(duree));
+            inputDeb.value = past.toISOString().split('T')[0];
+            inputFin.value = today.toISOString().split('T')[0];
+        }
+        filtrerFacturesEnDirect();
+    }
+
+    function resetFiltreFacturesSemaine() {
+        document.getElementById('live-search-q').value = '';
+        setPeriodeFactures(7);
+    }
+
+    function ouvrirModalNouvelleFacture() {
+        document.getElementById('form-creer-facture').action = '/factures/creer';
+        document.getElementById('nf-hidden-id').value = '';
+        document.getElementById('nf-modal-titre-label').innerText = 'Nouvelle Facture';
+        document.getElementById('nf-btn-submit').innerText = 'Enregistrer';
+
+        document.getElementById('nf-numero').value = prochainNumeroFactureDefaut;
+        document.getElementById('nf-date-facture').value = dateAujourdhuiIso;
+        document.getElementById('nf-select-client').value = '';
+        surChangementClient('');
+
+        document.getElementById('nf-taux-tva').value = '0.0';
+        document.getElementById('nf-remise-pourcent').value = '0';
+        document.getElementById('nf-ligne-qte').value = '0';
+
+        nouvellesLignes = [];
+        document.getElementById('modal-nouvelle-facture').classList.remove('hidden');
+        rechargerTarifLigne();
+        renderNouvellesLignes();
+        updateLiveClock();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function ouvrirModalModifierFacture(f) {
+        document.getElementById('form-creer-facture').action = '/factures/modifier';
+        document.getElementById('nf-hidden-id').value = f.id;
+        document.getElementById('nf-modal-titre-label').innerText = 'Modifier Facture';
+        document.getElementById('nf-btn-submit').innerText = 'Mettre à Jour';
+
+        document.getElementById('nf-numero').value = f.numero_facture || '';
+        document.getElementById('nf-date-facture').value = f.date_facture || dateAujourdhuiIso;
+
+        const selectClient = document.getElementById('nf-select-client');
+        if (f.client_id && selectClient.querySelector(`option[value="${f.client_id}"]`)) {
+            selectClient.value = String(f.client_id);
+        } else {
+            selectClient.value = 'autre';
+        }
+
+        document.getElementById('nf-hidden-client-id').value = f.client_id || '';
+        document.getElementById('nf-nom').value = f.destinataire_nom || f.client_nom || '';
+        document.getElementById('nf-ice').value = f.destinataire_ice || '';
+        document.getElementById('nf-tel').value = f.destinataire_tel || '';
+        document.getElementById('nf-adresse').value = f.destinataire_adresse || 'Nador';
+        document.getElementById('nf-mode-paiement').value = f.mode_paiement || 'Virement';
+
+        const tauxTva = (f.taux_tva !== undefined && f.taux_tva !== null) ? Number(f.taux_tva).toFixed(1) : '0.0';
+        document.getElementById('nf-taux-tva').value = tauxTva;
+        document.getElementById('nf-remise-pourcent').value = f.remise_pourcent || '0';
+        document.getElementById('nf-ligne-qte').value = '0';
+
+        nouvellesLignes = [];
+        if (f.lignes && Array.isArray(f.lignes)) {
+            f.lignes.forEach(l => {
+                nouvellesLignes.push({
+                    produit: l.produit || l.designation || 'Article',
+                    date: l.date || f.date_facture || dateAujourdhuiIso,
+                    qte: parseFloat(l.qte) || 0,
+                    pu: parseFloat(l.pu) || 0,
+                    total_ttc: parseFloat(l.total_ttc) || ((parseFloat(l.qte) || 0) * (parseFloat(l.pu) || 0))
+                });
+            });
+        }
+
+        document.getElementById('modal-nouvelle-facture').classList.remove('hidden');
+        rechargerTarifLigne();
+        renderNouvellesLignes();
+        updateLiveClock();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function fermerModalNouvelleFacture() {
+        document.getElementById('modal-nouvelle-facture').classList.add('hidden');
+    }
+
+    function surChangementClient(val) {
+        const nomInput = document.getElementById('nf-nom');
+        const iceInput = document.getElementById('nf-ice');
+        const telInput = document.getElementById('nf-tel');
+        const adrInput = document.getElementById('nf-adresse');
+        const modeSelect = document.getElementById('nf-mode-paiement');
+        const hiddenId = document.getElementById('nf-hidden-client-id');
+
+        if (val === 'autre' || !val) {
+            hiddenId.value = '';
+            nomInput.value = '';
+            nomInput.readOnly = false;
+            iceInput.value = '';
+            telInput.value = '';
+            adrInput.value = 'Nador';
+            modeSelect.value = 'Virement';
+            if (val === 'autre') nomInput.focus();
+        } else {
+            const cl = clientsData.find(c => String(c.id) === String(val));
+            if (cl) {
+                hiddenId.value = cl.id;
+                nomInput.value = cl.nom || '';
+                nomInput.readOnly = false;
+                iceInput.value = cl.ice || '';
+                telInput.value = cl.telephone || '';
+                adrInput.value = cl.adresse || 'Nador';
+                if (cl.mode_reglement) modeSelect.value = cl.mode_reglement;
+            }
+        }
+    }
+
+    async function rechargerTarifLigne() {
+        const prod = document.getElementById('nf-ligne-produit').value;
+        const dateC = document.getElementById('nf-ligne-date').value;
+        try {
+            const res = await fetch(`/api/tarif-date?produit=${encodeURIComponent(prod)}&date_consom=${encodeURIComponent(dateC)}`);
+            if (res.ok) {
+                const d = await res.json();
+                puCourant = Number(d.pu || 0);
+                document.getElementById('nf-tarif-affiche').innerText = puCourant.toFixed(3) + ' MAD';
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function insererLigneFacture() {
+        const prod = document.getElementById('nf-ligne-produit').value;
+        const dateC = document.getElementById('nf-ligne-date').value;
+        const qte = parseFloat(document.getElementById('nf-ligne-qte').value) || 0;
+
+        if (qte <= 0) {
+            alert('Veuillez saisir une quantité supérieure à 0.');
+            return;
+        }
+
+        const designation = `${prod} (${dateC})`;
+        const total = qte * puCourant;
+
+        nouvellesLignes.push({
+            produit: designation,
+            date: dateC,
+            qte: qte,
+            pu: puCourant,
+            total_ttc: total
+        });
+
+        renderNouvellesLignes();
+    }
+
+    function supprimerLigne(index) {
+        nouvellesLignes.splice(index, 1);
+        renderNouvellesLignes();
+    }
+
+    function renderNouvellesLignes() {
+        const tbody = document.getElementById('nf-lignes-body');
+        tbody.innerHTML = '';
+
+        if (nouvellesLignes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500 font-semibold italic text-[11px]">Aucune ligne insérée pour le moment.</td></tr>';
+        } else {
+            nouvellesLignes.forEach((l, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'text-xs text-slate-200 font-medium hover:bg-[#101F30]/40 transition';
+                tr.innerHTML = `
+                    <td class="p-2.5 font-bold text-white">${l.produit}</td>
+                    <td class="p-2.5 text-center font-mono">${l.qte}</td>
+                    <td class="p-2.5 text-right font-mono">${l.pu.toFixed(2)}</td>
+                    <td class="p-2.5 text-right font-mono font-black text-amber-400">${l.total_ttc.toFixed(2)}</td>
+                    <td class="p-2.5 text-center">
+                        <button type="button" onclick="supprimerLigne(${idx})" class="text-rose-500 hover:text-rose-400 transition cursor-pointer p-1">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        recalculerTotaux();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function recalculerTotaux() {
+        let totalTtcBrut = 0;
+        nouvellesLignes.forEach(l => totalTtcBrut += l.total_ttc);
+
+        const remPct = parseFloat(document.getElementById('nf-remise-pourcent').value) || 0;
+        const montantRemise = totalTtcBrut * (remPct / 100);
+        const totalTtc = totalTtcBrut - montantRemise;
+
+        const valTva = parseFloat(document.getElementById('nf-taux-tva').value);
+        const tauxTva = isNaN(valTva) ? 0.0 : valTva;
+        const coefTva = 1 + (tauxTva / 100);
+        const montantHt = totalTtc / coefTva;
+        const montantTva = totalTtc - montantHt;
+
+        document.getElementById('nf-affiche-ht').innerText = montantHt.toFixed(2) + ' DH';
+        document.getElementById('nf-affiche-ttc').innerText = totalTtc.toFixed(2) + ' MAD';
+
+        document.getElementById('nf-hidden-ht').value = montantHt.toFixed(2);
+        document.getElementById('nf-hidden-tva').value = montantTva.toFixed(2);
+        document.getElementById('nf-hidden-remise').value = montantRemise.toFixed(2);
+        document.getElementById('nf-hidden-ttc').value = totalTtc.toFixed(2);
+        document.getElementById('nf-hidden-lignes').value = JSON.stringify(nouvellesLignes);
+    }
+
+    function validerAvantSoumission(e) {
+        if (nouvellesLignes.length === 0) {
+            alert('Veuillez insérer au moins une ligne de description dans la facture.');
+            e.preventDefault();
+            return false;
+        }
+
+        const nom = document.getElementById('nf-nom').value.trim();
+        if (!nom) {
+            alert('Veuillez indiquer le nom ou raison sociale.');
+            e.preventDefault();
+            return false;
+        }
+
+        document.getElementById('nf-hidden-numero').value = document.getElementById('nf-numero').value.trim();
+        document.getElementById('nf-hidden-date').value = document.getElementById('nf-date-facture').value;
+
+        const ice = document.getElementById('nf-ice').value.trim();
+        const tel = document.getElementById('nf-tel').value.trim();
+        const adr = document.getElementById('nf-adresse').value.trim();
+        document.getElementById('nf-hidden-destinataire-info').value = `${nom} - ICE: ${ice} - TEL: ${tel} - ${adr}`;
+
+        return true;
+    }
+
+    function afficherDetailFacture(f) {
+        document.getElementById('df-num').innerText = 'FACTURE N° ' + f.numero_facture;
+        document.getElementById('df-date').innerText = 'Date : ' + f.date_facture;
+        document.getElementById('df-client').innerText = f.client_nom;
+        document.getElementById('df-client-code').innerText = 'Code : ' + (f.client_code || '—');
+        document.getElementById('df-client-ice').innerText = 'ICE : ' + (f.client_ice || '—') + ' | Tél : ' + (f.client_tel || '—');
+        document.getElementById('df-mode').innerText = 'Mode : ' + (f.mode_paiement || '—');
+
+        document.getElementById('df-ht').innerText = Number(f.montant_ht).toLocaleString('fr-FR', {minimumFractionDigits: 2}) + ' MAD';
+        document.getElementById('df-tva-label').innerText = 'TVA (' + f.taux_tva + '%) :';
+        document.getElementById('df-tva').innerText = Number(f.montant_tva).toLocaleString('fr-FR', {minimumFractionDigits: 2}) + ' MAD';
+        document.getElementById('df-ttc').innerText = Number(f.montant_ttc).toLocaleString('fr-FR', {minimumFractionDigits: 2}) + ' MAD';
+
+        const remiseRow = document.getElementById('df-remise-row');
+        if (f.montant_remise && f.montant_remise > 0) {
+            remiseRow.classList.remove('hidden');
+            document.getElementById('df-remise-label').innerText = 'Remise (' + f.remise_pourcent + '%) :';
+            document.getElementById('df-remise-val').innerText = '-' + Number(f.montant_remise).toLocaleString('fr-FR', {minimumFractionDigits: 2}) + ' MAD';
+        } else {
+            remiseRow.classList.add('hidden');
+        }
+
+        const tbody = document.getElementById('df-lignes-body');
+        tbody.innerHTML = '';
+        if (f.lignes && f.lignes.length > 0) {
+            f.lignes.forEach(l => {
+                const tr = document.createElement('tr');
+                tr.className = 'text-xs text-slate-200 font-medium';
+                tr.innerHTML = `
+                    <td class="p-2.5 font-bold text-white font-sans">${l.produit || 'Article'}</td>
+                    <td class="p-2.5 text-center font-mono">${l.qte}</td>
+                    <td class="p-2.5 text-right font-mono">${Number(l.pu).toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 3})}</td>
+                    <td class="p-2.5 text-right font-mono font-black text-amber-400">${Number(l.total_ttc || (l.qte * l.pu)).toLocaleString('fr-FR', {minimumFractionDigits: 2})} MAD</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="4" class="p-3 text-center text-slate-500 italic">Aucune description dans cette facture.</td></tr>';
+        }
+
+        document.getElementById('df-print-btn').href = '/factures/' + f.id + '/imprimer';
+        document.getElementById('modal-facture-detail').classList.remove('hidden');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function fermerModalFacture() {
+        document.getElementById('modal-facture-detail').classList.add('hidden');
+    }
+
+    function ouvrirDetailDepuisLigne(btn) {
+        const row = btn.closest('.facture-row');
+        const script = row.querySelector('.facture-row-payload');
+        if (script) afficherDetailFacture(JSON.parse(script.textContent));
+    }
+
+    function ouvrirModifierDepuisLigne(btn) {
+        const row = btn.closest('.facture-row');
+        const script = row.querySelector('.facture-row-payload');
+        if (script) ouvrirModalModifierFacture(JSON.parse(script.textContent));
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.facture-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('.actions-cell')) return;
+                const script = row.querySelector('.facture-row-payload');
+                if (script) afficherDetailFacture(JSON.parse(script.textContent));
+            });
+        });
+
+        filtrerFacturesEnDirect();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+</script>
