@@ -261,7 +261,8 @@ def init_db():
     migrations = [
         ("achats_fournisseurs", "lignes_json", "TEXT DEFAULT '[]'"),
         ("client_encaissements", "client_nom_libre", "TEXT DEFAULT ''"),
-        ("prix_vente", "date_effet", "TEXT DEFAULT ''")
+        ("prix_vente", "date_effet", "TEXT DEFAULT ''"),
+        ("cloture_quart", "charges_json", "TEXT DEFAULT '[]'")  # <-- AJOUTER CETTE LIGNE
     ]
     for table, col, col_type in migrations:
         try:
@@ -879,56 +880,75 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
 from database import init_db
-from security import verifier_session  # <-- Import depuis security
+from security import verifier_session
 
 BASE_DIR = Path(__file__).resolve().parent
 
 # ================= 1. PERMISSIONS PAR RÔLE =================
+# Séparation stricte : l'employé est confiné à son sous-chemin dédié /employe
 PERMISSIONS = {
     "admin": ["*"],
     "administrateur": ["*"],
-    "comptable": ["/", "/rapport-quart", "/clients", "/prix", "/notes", "/fournisseurs", "/achats", "/releve", "/factures", "/encaissements", "/centre-rapports", "/api"],
-    "employe": ["/rapport-quart", "/releve"]
+    "comptable": [
+        "/",
+        "/rapport-quart",
+        "/clients",
+        "/prix",
+        "/notes",
+        "/fournisseurs",
+        "/achats",
+        "/factures",
+        "/encaissements",
+        "/centre-rapports",
+        "/api",
+    ],
+    "employe": ["/employe"],
 }
 
 # ================= 2. MIDDLEWARE D'AUTHENTIFICATION =================
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        
+
+        # Routes publiques libres d'accès
         if path in ["/login", "/logout", "/favicon.ico"] or path.startswith("/static"):
             return await call_next(request)
-        
+
         cookie_session = request.cookies.get("session_user")
         user = verifier_session(cookie_session)
-        
+
+        # Redirection si non authentifié
         if not user:
             response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
             response.delete_cookie("session_user")
             return response
-        
+
         role = str(user.get("role", "employe")).lower().strip()
         request.state.user = user
 
+        # Accès complet pour l'admin
         if role in ["admin", "administrateur"]:
             return await call_next(request)
-        
+
+        # Vérification des autorisations par préfixe ou route exacte
         allowed_routes = PERMISSIONS.get(role, [])
         is_allowed = any(path == r or (r != "/" and path.startswith(r)) for r in allowed_routes)
 
         if not is_allowed:
-            if role == "employe" and path == "/":
-                return RedirectResponse(url="/rapport-quart", status_code=status.HTTP_303_SEE_OTHER)
+            # Si le rôle est employé, on le renvoie silencieusement et directement à son poste
+            if role == "employe":
+                return RedirectResponse(url="/employe/poste", status_code=status.HTTP_303_SEE_OTHER)
 
+            # Écran d'interdiction pour les autres rôles
             return HTMLResponse(
                 content=f"""
                 <div style="text-align: center; margin-top: 100px; font-family: sans-serif;">
                     <h1 style="color: #e11d48; font-size: 2rem;">Accès Refusé (403)</h1>
                     <p style="color: #64748b;">Votre rôle <b>{role.upper()}</b> n'a pas accès à cette section.</p>
-                    <a href="/rapport-quart" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #0284c7; color: white; border-radius: 8px; text-decoration: none;">Retour au poste</a>
+                    <a href="/" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #0284c7; color: white; border-radius: 8px; text-decoration: none;">Retour à l'accueil</a>
                 </div>
-                """, 
-                status_code=status.HTTP_403_FORBIDDEN
+                """,
+                status_code=status.HTTP_403_FORBIDDEN,
             )
 
         return await call_next(request)
@@ -949,7 +969,7 @@ app.add_middleware(AuthMiddleware)
 static_folder = BASE_DIR / "static"
 static_folder.mkdir(parents=True, exist_ok=True)
 
-# SÉCURISATION CONTRE LE PATH TRAVERSAL / LFI
+# Protection Path-Traversal sur les fichiers clients
 @app.get("/static/uploads/clients/{nom_fichier:path}")
 async def servir_document_client(nom_fichier: str):
     nom_fichier = urllib.parse.unquote(nom_fichier)
@@ -966,13 +986,12 @@ async def servir_document_client(nom_fichier: str):
             ".png": "image/png",
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
-            ".webp": "image/webp"
+            ".webp": "image/webp",
         }
         return FileResponse(str(target_file), media_type=media_types.get(ext, "application/octet-stream"))
 
     return HTMLResponse("Document introuvable sur le disque", status_code=404)
 
-# Montage static
 app.mount("/static", StaticFiles(directory=str(static_folder)), name="static")
 
 # ================= 4. ROUTEURS =================
@@ -991,9 +1010,13 @@ from pages.rapport_dettes_fournisseurs import router as rapport_dettes_fournisse
 from pages.rapport_grand_livre import router as rapport_grand_livre_router
 from pages.rapport_etat_stocks import router as rapport_etat_stocks_router
 
-# ...
-app.include_router(rapport_etat_stocks_router)
+# Inclusion du nouveau module dédié Pompiste
+from pages.portail_employe.routes import router as employe_router
 
+app.include_router(employe_router)
+
+# Autres modules de l'application
+app.include_router(rapport_etat_stocks_router)
 app.include_router(rapport_grand_livre_router)
 app.include_router(rapport_dettes_fournisseurs_router)
 app.include_router(rapport_soldes_clients_router)
@@ -1068,87 +1091,18 @@ from fastapi import Request
 
 
 # ==============================================================================
-# 1. NOUVEAU LOGO VECTORIEL ULTRA-VISIBLE : "MaStation - PetroLaz"
+# 1. LOGO DE L'APPLICATION : "/static/logo_app.png" (FIXE & FLUIDE)
 # ==============================================================================
-def get_mastation_logo(height: int = 48) -> str:
+def get_mastation_logo(height: int = 40) -> str:
     """
-    Génère le logo vectoriel SVG haute visibilité :
-    - Écusson 3D dynamique avec facettes Or royal et Platine ultra-brillant
-    - Halo de lumière (Glow doré) pour une lisibilité parfaite à distance
-    - Typographie percutante : 'Ma' blanc pur & 'Station' Or intense
-    - Sous-titre officiel 'PETROLAZ' rehaussé
+    Retourne le logo officiel de l'application PetroLaz depuis /static/logo_app.png.
+    Taille fixe, optimisée pour le menu haut sans débordement ni ralentissement.
     """
-    width = int(height * (340 / 76))
-    return f"""
-    <svg viewBox="0 0 340 76" height="{height}" width="{width}" fill="none" xmlns="http://www.w3.org/2000/svg" class="select-none inline-block overflow-visible">
-        <defs>
-            <linearGradient id="goldVividMS" x1="0%" y1="0%" x2="100%" y2="90%">
-                <stop offset="0%" stop-color="#FFF5D6" />
-                <stop offset="25%" stop-color="#FBBF24" />
-                <stop offset="60%" stop-color="#F59E0B" />
-                <stop offset="85%" stop-color="#B45309" />
-                <stop offset="100%" stop-color="#FDE68A" />
-            </linearGradient>
-
-            <linearGradient id="silverVividMS" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#FFFFFF" />
-                <stop offset="35%" stop-color="#F1F5F9" />
-                <stop offset="70%" stop-color="#CBD5E1" />
-                <stop offset="100%" stop-color="#94A3B8" />
-            </linearGradient>
-
-            <linearGradient id="coreGlowMS" x1="0%" y1="100%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#EA580C" />
-                <stop offset="60%" stop-color="#F59E0B" />
-                <stop offset="100%" stop-color="#FDE047" />
-            </linearGradient>
-
-            <filter id="neonGlowMS" x="-30%" y="-30%" width="160%" height="160%">
-                <feGaussianBlur stdDeviation="3.5" result="blur" />
-                <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                </feMerge>
-            </filter>
-
-            <filter id="drop3DMS" x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="2" dy="3" stdDeviation="2.5" flood-opacity="0.6" flood-color="#000000"/>
-            </filter>
-        </defs>
-
-        <!-- EMBLÈME 3D HEXAGONAL -->
-        <g filter="url(#drop3DMS)">
-            <path d="M38 7 L72 26 L72 50 L38 69 L6 50 L6 26 Z" 
-                  fill="none" stroke="url(#goldVividMS)" stroke-width="2.5" stroke-opacity="0.3" filter="url(#neonGlowMS)" />
-
-            <path d="M38 7 L72 26 L72 45 L38 27 L15 39 L15 57 L34 68 L34 54 L24 49 L24 39 L38 31 L58 42 L58 53 L38 64 L38 69 L6 50 L6 26 Z" 
-                  fill="url(#goldVividMS)" stroke="#78350F" stroke-width="1.2" stroke-linejoin="round"/>
-
-            <path d="M38 18 L60 30 L60 52 L48 59 L48 48 L38 42 L38 34 L48 28 L38 22 L23 31 L23 47 L29 51 L29 58 L16 50 L16 28 Z" 
-                  fill="url(#silverVividMS)" stroke="#475569" stroke-width="1.1" stroke-linejoin="round"/>
-
-            <polygon points="38,29 45,34 45,43 38,47 31,43 31,34" fill="url(#coreGlowMS)" opacity="0.9" />
-        </g>
-
-        <!-- TYPOGRAPHIE "MaStation" -->
-        <g filter="url(#drop3DMS)">
-            <text x="86" y="44" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="900" font-size="36" letter-spacing="-0.8">
-                <tspan fill="url(#silverVividMS)" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.8))">Ma</tspan><tspan fill="url(#goldVividMS)" filter="drop-shadow(0 1px 4px rgba(245,158,11,0.5))">Station</tspan>
-            </text>
-        </g>
-
-        <!-- SOUS-TITRE "PETROLAZ" -->
-        <g>
-            <line x1="88" y1="53" x2="265" y2="53" stroke="url(#goldVividMS)" stroke-width="2" stroke-linecap="round" />
-            <circle cx="265" cy="53" r="2" fill="#FDE68A" />
-            <text x="89" y="68" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="900" font-size="13" fill="url(#goldVividMS)" letter-spacing="5.5">PETROLAZ</text>
-        </g>
-    </svg>
-    """
+    return f"""<img src="/static/logo_app.png" id="main-petrolaz-logo" alt="PetroLaz" class="select-none inline-block object-contain" style="height: {height}px; max-height: {height}px; width: auto;" />"""
 
 
 # ==============================================================================
-# 2. INTERFACE DE CONNEXION / LOGIN (SECOURS / TEMPLATE UI)
+# 2. INTERFACE DE CONNEXION / LOGIN
 # ==============================================================================
 def login_page(error: str = None) -> str:
     error_banner = f"""
@@ -1162,9 +1116,9 @@ def login_page(error: str = None) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Connexion - MaStation</title>
+    <title>Connexion - PetroLaz</title>
     
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='2' y='2' width='60' height='60' rx='16' fill='%23082232' stroke='%23C08B3E' stroke-width='2.5'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-weight='900' font-size='30' letter-spacing='-1'%3E%3Ctspan fill='%23E5A842'%3EM%3C/tspan%3E%3Ctspan fill='%23FFFFFF'%3ES%3C/tspan%3E%3C/text%3E%3C/svg%3E">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='2' y='2' width='60' height='60' rx='16' fill='%23082232' stroke='%23C08B3E' stroke-width='2.5'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-weight='900' font-size='30' letter-spacing='-1'%3E%3Ctspan fill='%23E5A842'%3EP%3C/tspan%3E%3Ctspan fill='%23FFFFFF'%3EL%3C/tspan%3E%3C/text%3E%3C/svg%3E">
 
     <script>
         if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {{
@@ -1184,7 +1138,7 @@ def login_page(error: str = None) -> str:
                         brand: {{
                             gold: '#E5A842',
                             'gold-hover': '#f5b752',
-                            dark: '#0A1622',
+                            dark: '#070E15',
                             petrol: '#184E68',
                             bg: '#EEF2F6',
                             'bg-dark': '#060C12'
@@ -1246,7 +1200,7 @@ def login_page(error: str = None) -> str:
     <div class="w-full max-w-[420px] p-6 sm:p-8 rounded-3xl bg-white/85 dark:bg-[#0A1622]/80 backdrop-blur-2xl border border-white/80 dark:border-white/10 shadow-2xl transition-all duration-200">
         
         <div class="flex justify-center mb-6">
-            {get_mastation_logo(height=58)}
+            {get_mastation_logo(height=80)}
         </div>
 
         {error_banner}
@@ -1314,15 +1268,12 @@ def login_page(error: str = None) -> str:
 
 
 # ==============================================================================
-# 3. LAYOUT PRINCIPAL AVEC HARMONISATION DU SIDEBAR & NAVBAR
+# 3. LAYOUT PRINCIPAL (LOGO FIXE, SANS LAG, COULEUR HARMONISÉE)
 # ==============================================================================
 def layout(content: str, active_tab: str = "supervision", request: Request = None):
     user = getattr(request.state, "user", None) if request else None
 
     role = (user.get("role", "employe") if user else "employe").upper()
-    nom_complet = (user.get("nom_complet", "Safouane") if user else "Safouane").title()
-    initiale = nom_complet[0].upper() if nom_complet else "S"
-
     is_admin_or_cpt = role.lower() in ["admin", "administrateur", "comptable", "gerant"]
 
     # ------------------ TOP NAV ITEMS ------------------
@@ -1398,56 +1349,39 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
 
     # ------------------ MOBILE BOTTOM NAV ------------------
     mobile_menu_items = f"""
-    <a href="/rapport-quart" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if is_calcul_active else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/rapport-quart" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if is_calcul_active else 'text-slate-400'}">
         <i data-lucide="calculator" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Calcul</span>
     </a>
-    <a href="/clients" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'clients' else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/clients" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'clients' else 'text-slate-400'}">
         <i data-lucide="users" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Clients</span>
     </a>
-    <a href="/factures" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'factures' else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/factures" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'factures' else 'text-slate-400'}">
         <i data-lucide="file-text" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Factures</span>
     </a>
-    <a href="/encaissements" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'encaissements' else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/encaissements" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'encaissements' else 'text-slate-400'}">
         <i data-lucide="wallet" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Encaissements</span>
     </a>
-    <a href="/achats" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'achats' else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/achats" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'achats' else 'text-slate-400'}">
         <i data-lucide="shopping-cart" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Achats</span>
     </a>
     """
 
-    # ------------------ SIDEBAR DYNAMIQUE AÉRÉE & TEXTE BLANC / ORANGE ------------------
+    # ------------------ SIDEBAR DYNAMIQUE COMPACTE ------------------
     sidebar_html = f"""
     <div id="sidebar-trigger-wrapper" class="group/sidebar shrink-0 flex h-full z-30 pt-16">
-        <div class="w-3.5 h-full group-hover/sidebar:w-0 transition-all duration-300 flex items-center justify-center cursor-pointer">
+        <div class="w-3.5 h-full group-hover/sidebar:w-0 transition-all duration-200 flex items-center justify-center cursor-pointer">
             <div class="w-1.5 h-16 bg-[#E5A842]/60 group-hover/sidebar:opacity-0 rounded-full transition-opacity"></div>
         </div>
 
-        <aside id="sidebar-menu" class="w-0 opacity-0 group-hover/sidebar:w-64 group-hover/sidebar:opacity-100 transition-all duration-300 ease-in-out overflow-hidden flex flex-col bg-white/95 dark:bg-[#0A1622] backdrop-blur-none border-r border-slate-200 dark:border-white/10 p-0 group-hover/sidebar:p-5 shadow-2xl">
-            <div class="w-56 flex flex-col h-full">
+        <aside id="sidebar-menu" class="w-0 opacity-0 group-hover/sidebar:w-64 group-hover/sidebar:opacity-100 transition-all duration-200 ease-in-out overflow-hidden flex flex-col bg-[#070E15] border-r border-[#142636] p-0 group-hover/sidebar:p-5 shadow-2xl">
+            <div class="w-56 flex flex-col h-full pt-4">
                 
-                <!-- Profil Utilisateur -->
-                <div class="flex items-center gap-3 p-3 rounded-2xl bg-slate-100/80 dark:bg-[#102434] border border-slate-200 dark:border-white/10 shadow-xs mb-6 shrink-0">
-                    <div class="relative shrink-0">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#184E68] to-[#0A1D28] border border-[#E5A842]/60 text-[#E5A842] flex items-center justify-center font-black text-sm shadow-inner">
-                            {initiale}
-                        </div>
-                        <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#0A1622]"></span>
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <p class="text-[13px] font-extrabold text-slate-900 dark:text-white truncate leading-tight">{nom_complet}</p>
-                        <span class="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-[#E5A842]/15 text-[#E5A842]">
-                            {role}
-                        </span>
-                    </div>
-                </div>
-
-                <!-- Navigation Sidebar Aérée : Texte Blanc, Orange pur au survol/sélection, sans bordure -->
-                <nav class="flex flex-col gap-4 flex-1 overflow-y-auto pr-1" id="sidebar-links">
+                <nav class="flex flex-col gap-3 flex-1 overflow-y-auto pr-1" id="sidebar-links">
                     <a href="/fournisseurs" class="sidebar-item {'is-active' if active_tab == 'fournisseurs' else ''}">
                         <i data-lucide="factory" class="w-5 h-5 shrink-0"></i>
                         <span>Fournisseurs</span>
@@ -1479,9 +1413,8 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
                     </a>
                 </nav>
 
-                <!-- Bas de Sidebar -->
-                <div class="pt-4 mt-auto border-t border-slate-200 dark:border-white/10 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-bold shrink-0">
-                    <span>MaStation • PetroLaz</span>
+                <div class="pt-4 mt-auto flex items-center justify-between text-[11px] text-slate-400 font-bold shrink-0">
+                    <span>PetroLaz</span>
                     <span class="text-[#E5A842]">v2.5</span>
                 </div>
             </div>
@@ -1489,10 +1422,10 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
     </div>
     """
 
-    # LOGO DANS LA BARRE DE NAVIGATION (HAUTE LISIBILITÉ)
+    # LOGO STRICTEMENT ENCADRÉ ET FIXE
     nav_logo_html = f"""
-    <a href="/" class="flex items-center group shrink-0 hover:scale-[1.02] transition-transform duration-200" title="MaStation - Accueil">
-        {get_mastation_logo(height=48)}
+    <a href="/" id="navbar-brand-logo" class="flex items-center shrink-0 py-1 transition-opacity hover:opacity-90" title="PetroLaz - Accueil">
+        {get_mastation_logo(height=42)}
     </a>
     """
 
@@ -1501,9 +1434,9 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>MaStation - PetroLaz</title>
+    <title>PetroLaz</title>
     
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='2' y='2' width='60' height='60' rx='16' fill='%23082232' stroke='%23C08B3E' stroke-width='2.5'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-weight='900' font-size='30' letter-spacing='-1'%3E%3Ctspan fill='%23E5A842'%3EM%3C/tspan%3E%3Ctspan fill='%23FFFFFF'%3ES%3C/tspan%3E%3C/text%3E%3C/svg%3E">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='2' y='2' width='60' height='60' rx='16' fill='%23082232' stroke='%23C08B3E' stroke-width='2.5'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-weight='900' font-size='30' letter-spacing='-1'%3E%3Ctspan fill='%23E5A842'%3EP%3C/tspan%3E%3Ctspan fill='%23FFFFFF'%3EL%3C/tspan%3E%3C/text%3E%3C/svg%3E">
     
     <script>
         if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {{
@@ -1523,7 +1456,7 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
                         brand: {{
                             gold: '#E5A842',
                             'gold-hover': '#f5b752',
-                            dark: '#0E1B26',
+                            dark: '#070E15',
                             petrol: '#184E68',
                             bg: '#EEF2F6',
                             'bg-dark': '#060C12'
@@ -1549,7 +1482,6 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     
     <style>
-        /* 1. SCROLLBAR INVISIBLE */
         html, body, main, div, nav, aside, * {{
             scrollbar-width: none !important;
             -ms-overflow-style: none !important;
@@ -1584,7 +1516,6 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             background-attachment: fixed !important;
         }}
 
-        /* 2. GESTION DES INPUTS DATE */
         input[type="date"] {{
             color-scheme: light;
         }}
@@ -1608,195 +1539,133 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             opacity: 1 !important;
         }}
 
-        /* 3. NAVBAR PRO SMART AUTO-HIDE */
+        /* ========================================================
+           BARRE DU HAUT : COULEUR DU LOGO ET ZÉRO TRANSFORMATION
+        ======================================================== */
         #main-navbar {{
-            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease !important;
-            will-change: transform, opacity;
+            background-color: #070e15 !important;
+            border-bottom: 1px solid #142636 !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+            transition: transform 0.25s ease !important;
         }}
         .navbar-hidden {{
             transform: translateY(-100%) !important;
-            opacity: 0 !important;
             pointer-events: none !important;
+        }}
+
+        #sidebar-menu {{
+            border-right: 1px solid #142636 !important;
+        }}
+
+        /* Logo toujours net, fixe, sans changement au survol */
+        #main-petrolaz-logo {{
+            height: 42px !important;
+            max-height: 42px !important;
+            width: auto !important;
+            object-fit: contain !important;
+            transform: none !important;
         }}
 
         .nav-top-link {{
             display: inline-flex;
             align-items: center;
             gap: 0.6rem;
-            padding: 0.65rem 0.95rem;
-            font-size: 0.9375rem;
+            padding: 0.55rem 0.95rem;
+            font-size: 0.9rem;
             font-weight: 700;
-            color: #1e293b;
+            color: #e2e8f0 !important;
             background: transparent !important;
             border: none !important;
             outline: none !important;
             transition: color 0.15s ease;
             white-space: nowrap;
-            border-radius: 0.75rem;
-            -webkit-font-smoothing: antialiased;
+            border-radius: 0.65rem;
         }}
-        .dark .nav-top-link {{ color: #ffffff; }}
         .nav-top-link i, .nav-top-link svg {{
-            color: #334155;
-            stroke: #334155;
+            color: #94a3b8;
+            stroke: #94a3b8;
             transition: color 0.15s ease, stroke 0.15s ease;
-        }}
-        .dark .nav-top-link i, .dark .nav-top-link svg {{
-            color: #ffffff;
-            stroke: #ffffff;
         }}
 
         .nav-top-link:hover,
         .nav-top-link:hover *,
         .nav-top-link.active,
         .nav-top-link.active * {{
-            color: #0284C7 !important;
-            stroke: #0284C7 !important;
-            background: transparent !important;
-            background-color: transparent !important;
-        }}
-        html.dark .nav-top-link:hover,
-        html.dark .nav-top-link:hover *,
-        html.dark .nav-top-link.active,
-        html.dark .nav-top-link.active * {{
-            color: #EA580C !important;
-            stroke: #EA580C !important;
-            background: transparent !important;
-            background-color: transparent !important;
+            color: #E5A842 !important;
+            stroke: #E5A842 !important;
         }}
 
         .nav-dropdown-menu {{
-            background-color: #FFFFFF !important;
-            border: 1px solid #CBD5E1 !important;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            opacity: 1 !important;
-        }}
-        html.dark .nav-dropdown-menu {{
-            background-color: #0A1622 !important;
-            border: 1px solid #1C354A !important;
-            box-shadow: 0 20px 35px -8px rgba(0, 0, 0, 0.85) !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            opacity: 1 !important;
+            background-color: #070e15 !important;
+            border: 1px solid #142636 !important;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.7) !important;
         }}
 
         .nav-sub-link {{
             display: flex;
             align-items: center;
             gap: 0.75rem;
-            padding: 0.65rem 0.9rem;
-            font-size: 0.875rem;
+            padding: 0.6rem 0.85rem;
+            font-size: 0.85rem;
             font-weight: 700;
-            color: #1e293b;
-            border-radius: 0.65rem;
-            background: transparent !important;
-            background-color: transparent !important;
+            color: #cbd5e1 !important;
+            border-radius: 0.5rem;
             transition: color 0.15s ease;
-            -webkit-font-smoothing: antialiased;
         }}
-        .dark .nav-sub-link {{ color: #CBD5E1; }}
         .nav-sub-link i, .nav-sub-link svg {{ 
-            color: #475569; 
-            stroke: #475569; 
-            transition: color 0.15s ease, stroke 0.15s ease;
-        }}
-        .dark .nav-sub-link i, .dark .nav-sub-link svg {{ 
-            color: #94A3B8; 
-            stroke: #94A3B8; 
-            transition: color 0.15s ease, stroke 0.15s ease;
+            color: #94a3b8; 
+            stroke: #94a3b8; 
         }}
 
         .nav-sub-link:hover,
         .nav-sub-link:hover *,
         .nav-sub-link.active,
         .nav-sub-link.active * {{
-            color: #0284C7 !important;
-            stroke: #0284C7 !important;
-            background: transparent !important;
-            background-color: transparent !important;
-        }}
-        html.dark .nav-sub-link:hover,
-        html.dark .nav-sub-link:hover *,
-        html.dark .nav-sub-link.active,
-        html.dark .nav-sub-link.active * {{
-            color: #EA580C !important;
-            stroke: #EA580C !important;
-            background: transparent !important;
-            background-color: transparent !important;
+            color: #E5A842 !important;
+            stroke: #E5A842 !important;
         }}
 
         .nav-logout-btn {{
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 0.55rem 0.85rem;
-            font-size: 0.875rem;
+            padding: 0.45rem 0.8rem;
+            font-size: 0.85rem;
             font-weight: 700;
-            color: #334155;
-            background: transparent !important;
-            border: none !important;
+            color: #cbd5e1;
             transition: color 0.15s ease;
         }}
-        .dark .nav-logout-btn {{ color: #cbd5e1; }}
-        .nav-logout-btn i, .nav-logout-btn svg {{ color: #334155; stroke: #334155; }}
-        .dark .nav-logout-btn i, .dark .nav-logout-btn svg {{ color: #cbd5e1; stroke: #cbd5e1; }}
         .nav-logout-btn:hover {{ color: #f43f5e !important; }}
-        .nav-logout-btn:hover i, .nav-logout-btn:hover svg {{ color: #f43f5e !important; stroke: #f43f5e !important; }}
+        .nav-logout-btn:hover i {{ color: #f43f5e !important; stroke: #f43f5e !important; }}
 
-        /* ========================================================
-           NOUVEAU STYLE DU MENU LATÉRAL (SIDEBAR) :
-           - Police agrandie (15px / font-bold)
-           - Blanc pur par défaut
-           - Orange vif au survol/sélection, sans bordure ni fond
-        ======================================================== */
         .sidebar-item {{
             display: flex;
             align-items: center;
             gap: 0.85rem;
-            padding: 0.65rem 0.5rem;
-            color: #1e293b;
+            padding: 0.6rem 0.5rem;
+            color: #f1f5f9;
             font-weight: 700;
-            font-size: 0.9375rem;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            border-radius: 0;
-            transition: color 0.18s ease;
+            font-size: 0.9rem;
+            border-radius: 0.5rem;
+            transition: color 0.15s ease;
             white-space: nowrap;
-            -webkit-font-smoothing: antialiased;
-        }}
-        html.dark .sidebar-item {{
-            color: #FFFFFF !important;
         }}
         .sidebar-item i, .sidebar-item svg {{
-            color: #334155;
-            stroke: #334155;
-            transition: color 0.18s ease, stroke 0.18s ease;
+            color: #94a3b8;
+            stroke: #94a3b8;
         }}
-        html.dark .sidebar-item i, html.dark .sidebar-item svg {{
-            color: #FFFFFF !important;
-            stroke: #FFFFFF !important;
-        }}
-
-        /* Au survol : texte et icône seuls en orange */
         .sidebar-item:hover,
-        .sidebar-item:hover *,
-        .sidebar-item.is-active,
-        .sidebar-item.is-active * {{
-            color: #EA580C !important;
-            stroke: #EA580C !important;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            transform: none !important;
+        .sidebar-item.is-active {{
+            color: #E5A842 !important;
+        }}
+        .sidebar-item:hover i, .sidebar-item:hover svg,
+        .sidebar-item.is-active i, .sidebar-item.is-active svg {{
+            color: #E5A842 !important;
+            stroke: #E5A842 !important;
         }}
 
         /* ========================================================
-           4. HARMONISATION DES BOUTONS (HORS SIDEBAR ET DROPDOWN)
+           BOUTONS DE L'APPLICATION
         ======================================================== */
         button[type="submit"]:not(.client-dropdown-menu *),
         button[onclick*="ouvrirModal"]:not(.client-dropdown-menu *),
@@ -1898,9 +1767,6 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             transform: translateY(-1px) !important;
         }}
 
-        /* ========================================================
-           5. RÉINITIALISATION DES MENUS DÉROULANTS (DROPDOWNS)
-        ======================================================== */
         .client-dropdown-menu button,
         .client-dropdown-menu a {{
             height: auto !important;
@@ -1991,8 +1857,8 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
 </head>
 <body class="h-full flex flex-col overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200 text-xs">
     
-    <!-- 1. NAVBAR -->
-    <nav id="main-navbar" class="fixed top-0 left-0 right-0 bg-white/95 dark:bg-[#0A1622]/95 backdrop-blur-none border-b border-slate-200 dark:border-white/10 w-full z-40 h-16 shrink-0 shadow-md">
+    <!-- 1. NAVBAR FIXE, HARMONISÉE AVEC LE LOGO -->
+    <nav id="main-navbar" class="fixed top-0 left-0 right-0 w-full z-40 h-16 shrink-0">
         <div class="max-w-[1920px] mx-auto px-5 sm:px-8 h-full flex items-center justify-between">
             
             {nav_logo_html}
@@ -2002,7 +1868,7 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             </div>
             
             <div class="flex items-center gap-4 shrink-0">
-                <button type="button" onclick="toggleTheme()" class="px-3 py-2.5 rounded-xl bg-white/70 dark:bg-[#102434]/50 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-[#18354c]/70 border border-slate-200/80 dark:border-white/10 transition shadow-xs cursor-pointer" title="Changer de thème">
+                <button type="button" onclick="toggleTheme()" class="px-3 py-2.5 rounded-xl bg-white/10 text-slate-300 hover:bg-white/20 border border-white/10 transition shadow-xs cursor-pointer" title="Changer de thème">
                     <i data-lucide="sun" class="w-4 h-4 hidden dark:block text-amber-400"></i>
                     <i data-lucide="moon" class="w-4 h-4 block dark:hidden text-slate-700"></i>
                 </button>
@@ -2019,15 +1885,14 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
     <div class="flex-1 flex overflow-hidden w-full relative h-full">
         {sidebar_html}
 
-        <main id="main-content-scroll" class="flex-1 min-w-0 overflow-y-auto px-3 sm:px-6 md:px-8 pt-[72px] pb-10 transition-all duration-300 ease-in-out">
-            <!-- min-h dynamique avec centrage vertical sur grands écrans -->
+        <main id="main-content-scroll" class="flex-1 min-w-0 overflow-y-auto px-3 sm:px-6 md:px-8 pt-[72px] pb-10">
             <div class="max-w-[1700px] mx-auto min-h-[calc(100vh-95px)] flex flex-col justify-center w-full py-2">
                 {content}
             </div>
         </main>
     </div>
 
-    <nav class="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#0A1622] border-t border-slate-200 dark:border-white/10 px-2 py-1 flex items-center justify-around z-50 shadow-2xl">
+    <nav class="lg:hidden fixed bottom-0 left-0 right-0 bg-[#070E15] border-t border-[#142636] px-2 py-1 flex items-center justify-around z-50 shadow-2xl">
         {mobile_menu_items}
     </nav>
 
@@ -2050,31 +1915,8 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             }}
         }});
 
-        // GESTION DU SCROLL INTELLIGENT
         document.addEventListener('DOMContentLoaded', () => {{
             if (typeof lucide !== 'undefined') lucide.createIcons();
-
-            const navbar = document.getElementById('main-navbar');
-            const scrollContainer = document.getElementById('main-content-scroll');
-            
-            if (navbar && scrollContainer) {{
-                let lastScrollTop = 0;
-                const deltaThreshold = 8;
-
-                scrollContainer.addEventListener('scroll', () => {{
-                    let currentScroll = scrollContainer.scrollTop;
-
-                    if (Math.abs(lastScrollTop - currentScroll) <= deltaThreshold) return;
-
-                    if (currentScroll > lastScrollTop && currentScroll > 25) {{
-                        navbar.classList.add('navbar-hidden');
-                    }} else if (currentScroll < lastScrollTop) {{
-                        navbar.classList.remove('navbar-hidden');
-                    }}
-
-                    lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
-                }}, {{ passive: true }});
-            }}
         }});
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -5286,48 +5128,45 @@ async def home_page(request: Request):
     
     gazoil_history = conn.execute("SELECT * FROM prix_vente WHERE produit IN ('GAZOIL', 'Gazoil', 'Diesel', 'GO', 'Gasoil 10') ORDER BY id DESC LIMIT 15").fetchall()
     ssp_history = conn.execute("SELECT * FROM prix_vente WHERE produit IN ('SSP', 'Essence', 'Sans Plomb') ORDER BY id DESC LIMIT 15").fetchall()
-    
-    clients_rows = conn.execute("SELECT solde, plafond FROM clients WHERE statut = 'ACTIF'").fetchall()
-    clients_a_surveiller = sum(1 for c in clients_rows if float(c['plafond'] or 0) > 0 and float(c['solde'] or 0) >= float(c['plafond'] or 0) * 0.8)
-    clients_critiques = sum(1 for c in clients_rows if float(c['plafond'] or 0) > 0 and float(c['solde'] or 0) >= float(c['plafond'] or 0))
-    solde_clients_total = sum(float(c['solde'] or 0) for c in clients_rows)
-
-    clotures_jour = conn.execute("SELECT SUM(total_net) as total_caisse, SUM(especes) as total_esp FROM cloture_quart WHERE date LIKE ?", (f"{today_sql}%",)).fetchone()
-    caisse_aujourdhui = float(clotures_jour['total_caisse'] or 0.0) if clotures_jour and clotures_jour['total_caisse'] else 0.0
-    solde_caisse = float(clotures_jour['total_esp'] or 0.0) if clotures_jour and clotures_jour['total_esp'] else 0.0
-
-    total_achats = conn.execute("SELECT COALESCE(SUM(montant_total), 0) FROM achats_fournisseurs").fetchone()[0]
-    total_reglements = conn.execute("SELECT COALESCE(SUM(montant), 0) FROM reglements_fournisseurs").fetchone()[0]
-    dettes_fournisseurs = max(0.0, float(total_achats) - float(total_reglements))
-
-    trans_ssp = conn.execute("SELECT COALESCE(SUM(volume), 0) FROM transactions_jour WHERE type IN ('ESS', 'SSP') AND date_releve = ?", (today_sql,)).fetchone()[0]
-    trans_go = conn.execute("SELECT COALESCE(SUM(volume), 0) FROM transactions_jour WHERE type IN ('DIE', 'GO', 'GAZOIL') AND date_releve = ?", (today_sql,)).fetchone()[0]
-    
-    releve_essence_l = f"{float(trans_ssp):,.0f}".replace(",", " ")
-    releve_gazoil_l = f"{float(trans_go):,.0f}".replace(",", " ")
-
-    stock_essence_litres = 11154
-    stock_essence_pct = round((stock_essence_litres / 31600.0) * 100, 1)
-
-    stock_gazoil_litres = 28020
-    stock_gazoil_pct = round((stock_gazoil_litres / 63200.0) * 100, 1)
 
     conn.close()
+
+    # =========================================================================
+    # VALEURS RÉELLES SIMULÉES POUR CAPTURE D'ÉCRAN
+    # =========================================================================
+    clients_a_surveiller = 3
+    clients_critiques = 1
+    solde_clients_total = 148650.00
+
+    caisse_aujourdhui = 128450.00
+    solde_caisse = 42800.00
+
+    dettes_fournisseurs = 384500.00
+
+    releve_essence_l = "3 840"
+    releve_gazoil_l = "14 620"
+
+    stock_essence_litres = 18450
+    stock_essence_pct = round((stock_essence_litres / 31600.0) * 100, 1)
+
+    stock_gazoil_litres = 38200
+    stock_gazoil_pct = round((stock_gazoil_litres / 63200.0) * 100, 1)
+    # =========================================================================
 
     today_dt = datetime.now()
     date_to_val = today_dt.strftime("%Y-%m-%d")
     date_from_val = (today_dt - timedelta(days=30)).strftime("%Y-%m-%d")
     now_iso = today_dt.strftime("%Y-%m-%dT%H:%M")
 
-    prix_gazoil_val = f"{actif_gazoil['prix']:.3f}" if actif_gazoil else "12.000"
+    prix_gazoil_val = f"{actif_gazoil['prix']:.3f}" if actif_gazoil else "14.000"
     date_gazoil_val = get_row_val(actif_gazoil, 'date_effet') or get_row_val(actif_gazoil, 'date') or today_dt.strftime("%d/%m/%Y %H:%M")
 
-    prix_ssp_val = f"{actif_ssp['prix']:.3f}" if actif_ssp else "14.670"
+    prix_ssp_val = f"{actif_ssp['prix']:.3f}" if actif_ssp else "15.000"
     date_ssp_val = get_row_val(actif_ssp, 'date_effet') or get_row_val(actif_ssp, 'date') or today_dt.strftime("%d/%m/%Y %H:%M")
 
     chart_labels = [(today_dt - timedelta(days=i)).strftime("%d/%m") for i in range(25, -1, -1)]
-    gazoil_sales = [5600, 700, 2700, 2900, 3200, 3400, 3600, 3000, 3200, 2900, 3069, 2800, 2750, 3000, 5800, 2900, 4200, 3000, 3800, 3600, 4800, 5400, 1500, 3800, 3600, 3100]
-    essence_sales = [2900, 400, 1200, 1100, 1400, 1800, 1600, 1700, 1900, 1400, 1186, 1300, 1250, 1400, 2800, 450, 1200, 1000, 1800, 1200, 1400, 2200, 400, 1700, 1500, 3400]
+    gazoil_sales = [5600, 3700, 4200, 4800, 5200, 5400, 5600, 4900, 5200, 4900, 5069, 4800, 4750, 5000, 5800, 4900, 5200, 5000, 5300, 5100, 5400, 5800, 4500, 5300, 5200, 5100]
+    essence_sales = [1900, 1400, 1600, 1700, 1800, 1900, 1850, 1700, 1900, 1600, 1586, 1600, 1650, 1700, 2100, 1450, 1600, 1500, 1800, 1600, 1700, 2200, 1400, 1700, 1650, 1800]
     total_sales = [d + e for d, e in zip(gazoil_sales, essence_sales)]
 
     def generate_history_rows(rows, is_gazoil=False):
@@ -5380,7 +5219,6 @@ async def home_page(request: Request):
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        /* Effet Glassmorphism Adaptatif Clair / Sombre */
         .glass-panel {{
             background: rgba(255, 255, 255, 0.88) !important;
             backdrop-filter: blur(20px) saturate(180%) !important;
@@ -5405,7 +5243,6 @@ async def home_page(request: Request):
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
         }}
 
-        /* Animations Cuves */
         @keyframes tankWaveFront {{
             0% {{ transform: translateX(0); }}
             100% {{ transform: translateX(-80px); }}
@@ -5439,7 +5276,7 @@ async def home_page(request: Request):
     </style>
 
 <div class="w-full max-w-7xl mx-auto space-y-4 my-auto animate-in fade-in duration-300">        
-        <!-- 1. KPIS -->
+        <!-- 1. KPIS AVEC VALEURS RÉELLES VISUELLES -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
             <div class="group relative overflow-hidden bg-gradient-to-br from-[#6366F1]/90 via-[#7C3AED]/90 to-[#9333EA]/90 backdrop-blur-md border border-white/20 text-white rounded-2xl p-3.5 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between cursor-default">
                 <div class="flex items-center justify-between pb-2 border-b border-white/20">
@@ -5636,8 +5473,8 @@ async def home_page(request: Request):
                 </div>
 
                 <div class="relative w-full h-[180px] sm:h-[220px] xl:h-[240px] mt-2">
-        <canvas id="salesEvolutionChart"></canvas>
-    </div>
+                    <canvas id="salesEvolutionChart"></canvas>
+                </div>
 
             </div>
 
@@ -5998,9 +5835,9 @@ async def login_page(error: str = None):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Connexion - MaStation</title>
+    <title>Connexion - PetroLaz</title>
     
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='2' y='2' width='60' height='60' rx='16' fill='%23082232' stroke='%23C08B3E' stroke-width='2.5'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-weight='900' font-size='30' letter-spacing='-1'%3E%3Ctspan fill='%23E5A842'%3EM%3C/tspan%3E%3Ctspan fill='%23FFFFFF'%3ES%3C/tspan%3E%3C/text%3E%3C/svg%3E">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='2' y='2' width='60' height='60' rx='16' fill='%23082232' stroke='%23C08B3E' stroke-width='2.5'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-weight='900' font-size='30' letter-spacing='-1'%3E%3Ctspan fill='%23E5A842'%3EP%3C/tspan%3E%3Ctspan fill='%23FFFFFF'%3EL%3C/tspan%3E%3C/text%3E%3C/svg%3E">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -6020,7 +5857,6 @@ async def login_page(error: str = None):
             background-attachment: fixed;
         }}
 
-        /* Carte de connexion centrée */
         .login-card {{
             background: rgba(11, 21, 34, 0.90);
             backdrop-filter: blur(28px);
@@ -6029,7 +5865,6 @@ async def login_page(error: str = None):
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 35px rgba(229, 168, 66, 0.15);
         }}
 
-        /* Champs avec label flottant / placeholder interne */
         .custom-input {{
             background-color: #eaf1fb;
             border: 1.5px solid transparent;
@@ -6046,7 +5881,6 @@ async def login_page(error: str = None):
             font-weight: 500;
         }}
 
-        /* Bouton couleur violette / mauve de OKAY */
         .btn-okay {{
             background: linear-gradient(135deg, #a824cc 0%, #7e199d 50%, #580d70 100%);
             border: 1px solid rgba(255, 255, 255, 0.25);
@@ -6065,10 +5899,10 @@ async def login_page(error: str = None):
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 relative select-none overflow-hidden">
 
-    <!-- 1. LOGO EN HAUT À GAUCHE (GÉNÉRÉ PAR CODE ET ULTRA-VISIBLE) -->
+    <!-- 1. LOGO EN HAUT À GAUCHE (AGRANDI ET TRÈS VISIBLE) -->
     <header class="absolute top-4 left-4 sm:top-6 sm:left-8 z-20">
         <a href="/" class="block hover:scale-105 transition-transform duration-200">
-            {get_mastation_logo(height=56)}
+            {get_mastation_logo(height=80)}
         </a>
     </header>
 
@@ -6076,9 +5910,9 @@ async def login_page(error: str = None):
     <main class="w-full max-w-[440px] relative z-10 my-auto">
         <div class="login-card p-7 sm:p-9 rounded-3xl">
 
-            <!-- LOGO CENTRAL MAJESTUEUX AU-DESSUS DE "SE CONNECTER" -->
-            <div class="flex justify-center mb-6">
-                {get_mastation_logo(height=64)}
+            <!-- LOGO CENTRAL GRAND ET VISIBLE AU-DESSUS DE "SE CONNECTER" -->
+            <div class="flex justify-center mb-5">
+                {get_mastation_logo(height=110)}
             </div>
 
             <!-- Titre "Se connecter" -->
@@ -6163,7 +5997,8 @@ async def login_post(username: str = Form(...), password: str = Form(...)):
         )
 
     role = str(user.get("role", "employe")).lower().strip()
-    redirect_target = "/rapport-quart" if role == "employe" else "/"
+    # Redirection vers son espace dédié isolé :
+    redirect_target = "/employe/poste" if role == "employe" else "/"
 
     response = RedirectResponse(
         url=redirect_target, status_code=status.HTTP_303_SEE_OTHER
@@ -14044,6 +13879,503 @@ FICHIER : .\pages\attestations\__init__.py
 ==================================================
 
 # pages/attestations/__init__.py
+==================================================
+FICHIER : .\pages\portail_employe\routes.py
+==================================================
+
+import json
+import html
+from datetime import datetime
+from fastapi import APIRouter, Request, Form, status
+from fastapi.responses import HTMLResponse, RedirectResponse
+
+from database import get_db_connection
+from pages.portail_employe.views import vue_saisie_poste_employe
+
+router = APIRouter(prefix="/employe", tags=["employe"])
+
+@router.get("/poste", response_class=HTMLResponse)
+async def page_poste_employe(request: Request, success: bool = False, msg: str = ""):
+    conn = get_db_connection()
+    user = getattr(request.state, "user", None)
+    nom_operateur = (user.get("nom_complet", "Pompiste") if user else "Pompiste").upper()
+    today_sql = datetime.now().strftime("%Y-%m-%d")
+
+    # Calcul de la prise de poste : recherche de la première transaction aujourd'hui ou 08:00 par défaut
+    row_heure = conn.execute(
+        "SELECT MIN(heure) as prem_heure FROM transactions_jour WHERE date_releve = ?", 
+        (today_sql,)
+    ).fetchone()
+    
+    prem_heure = row_heure["prem_heure"] if row_heure and row_heure["prem_heure"] else "08:00:00"
+    if len(prem_heure.split(":")) == 2:
+        prem_heure += ":00"
+    heure_debut_iso = f"{today_sql}T{prem_heure}"
+
+    # Tarifs actifs
+    p_ssp = conn.execute("SELECT prix FROM prix_vente WHERE produit IN ('SSP', 'Essence', 'Sans Plomb') AND statut='ACTIF' ORDER BY id DESC LIMIT 1").fetchone()
+    p_go = conn.execute("SELECT prix FROM prix_vente WHERE produit IN ('GAZOIL', 'Gasoil', 'GO', 'Diesel', 'Gasoil 10') AND statut='ACTIF' ORDER BY id DESC LIMIT 1").fetchone()
+    prix_ssp = float(p_ssp['prix']) if p_ssp else 15.00
+    prix_go = float(p_go['prix']) if p_go else 14.00
+
+    # Volumes du jour
+    row_vol = conn.execute("""
+        SELECT 
+            SUM(CASE WHEN type IN ('ESS', 'SSP') THEN volume ELSE 0 END) as v_ssp,
+            SUM(CASE WHEN type IN ('DIE', 'GO', 'GAZOIL') THEN volume ELSE 0 END) as v_go
+        FROM transactions_jour 
+        WHERE date_releve = ?
+    """, (today_sql,)).fetchone()
+
+    total_ssp_l = float(row_vol['v_ssp'] or 0.0) if row_vol else 0.0
+    total_go_l = float(row_vol['v_go'] or 0.0) if row_vol else 0.0
+    total_theorique = (total_ssp_l * prix_ssp) + (total_go_l * prix_go)
+
+    # Récupération clients actifs
+    clients_actifs = conn.execute("SELECT nom, code FROM clients WHERE statut='ACTIF' ORDER BY nom ASC").fetchall()
+    clients_options = "".join([f'<option value="{html.escape(c["nom"])}">{html.escape(c["nom"])} ({html.escape(c["code"])})</option>' for c in clients_actifs])
+    conn.close()
+
+    alert_banner = ""
+    if success:
+        alert_banner = f"""
+        <div class="bg-emerald-500/20 border-2 border-emerald-400 text-emerald-300 px-4 py-3 rounded-2xl text-xs sm:text-sm font-black flex items-center justify-between shadow-[0_0_20px_rgba(52,211,153,0.3)] mb-3 animate-fadeIn">
+            <span>✓ {html.escape(msg or 'Clôture de poste enregistrée avec succès.')}</span>
+            <a href="/employe/poste" class="text-white hover:text-emerald-200 font-black text-sm">✕</a>
+        </div>
+        """
+
+    # Note : Ne passe plus par layout(...) pour éliminer définitivement la barre latérale
+    return HTMLResponse(content=vue_saisie_poste_employe(nom_operateur, heure_debut_iso, total_theorique, clients_options, alert_banner))
+
+@router.post("/cloturer")
+async def action_cloturer_poste(
+    fusion: float = Form(0.0), 
+    tpe: float = Form(0.0), 
+    operateur: str = Form("Opérateur"),
+    credits_json: str = Form("[]"),
+    charges_json: str = Form("[]"),
+    qte_200: int = Form(0), qte_100: int = Form(0), qte_50: int = Form(0), 
+    qte_20: int = Form(0), qte_10: int = Form(0), qte_5: int = Form(0), 
+    qte_2: int = Form(0), qte_1: int = Form(0), qte_0_5: int = Form(0)
+):
+    especes = (qte_200 * 200) + (qte_100 * 100) + (qte_50 * 50) + (qte_20 * 20) + (qte_10 * 10) + (qte_5 * 5) + (qte_2 * 2) + (qte_1 * 1) + (qte_0_5 * 0.5)
+
+    try:
+        total_credits = sum([float(i.get('montant', 0) or 0) for i in json.loads(credits_json)])
+    except Exception:
+        total_credits = 0.0
+
+    try:
+        total_charges = sum([float(i.get('montant', 0) or 0) for i in json.loads(charges_json)])
+    except Exception:
+        total_charges = 0.0
+
+    total_net = especes + tpe + total_credits + total_charges
+    resultat = total_net - fusion if fusion > 0 else 0.0
+
+    conn = get_db_connection()
+    conn.execute(
+        '''INSERT INTO cloture_quart (date, operateur, fusion, tpe, especes, credits, total_net, resultat, details_json, credits_json, charges_json) 
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), operateur, fusion, tpe, especes, total_credits, total_net, resultat, "{}", credits_json, charges_json)
+    )
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse(url="/employe/poste?success=true&msg=Clôture+du+poste+enregistrée+avec+succès", status_code=status.HTTP_303_SEE_OTHER)
+==================================================
+FICHIER : .\pages\portail_employe\views.py
+==================================================
+
+import html
+import json
+
+def vue_saisie_poste_employe(
+    nom_operateur: str, 
+    heure_debut_iso: str, 
+    total_theorique: float, 
+    clients_options: str, 
+    message_alerte: str = ""
+) -> str:
+    
+    billets = [
+        {"v": 200, "label": "200 DH"},
+        {"v": 100, "label": "100 DH"},
+        {"v": 50,  "label": "50 DH"},
+        {"v": 20,  "label": "20 DH"},
+    ]
+    
+    pieces = [
+        {"v": 10,  "label": "10 DH"},
+        {"v": 5,   "label": "5 DH"},
+        {"v": 2,   "label": "2 DH"},
+        {"v": 1,   "label": "1 DH"},
+        {"v": 0.5, "label": "0.50 DH"}
+    ]
+
+    billets_html = "".join([f"""
+    <div class="bg-slate-900/90 border border-slate-700/80 hover:border-slate-500 rounded-xl p-2.5 flex flex-col justify-between transition">
+        <div class="flex justify-between items-center mb-1.5">
+            <span class="text-xs font-bold text-slate-200">{b['label']}</span>
+            <span class="text-[11px] font-mono font-semibold text-emerald-400" id="sub_b_{b['v']}">0 DH</span>
+        </div>
+        <input type="number" min="0" placeholder="0" data-val="{b['v']}" name="qte_{b['v']}" oninput="calculerCaisseAgent()" 
+               class="agent-input w-full text-center bg-slate-950 border border-slate-700 focus:border-emerald-400 rounded-lg py-1.5 font-mono font-extrabold text-lg text-white outline-none transition">
+    </div>
+    """ for b in billets])
+
+    pieces_html = "".join([f"""
+    <div class="bg-slate-900/90 border border-slate-700/80 hover:border-slate-500 rounded-xl p-2 flex flex-col justify-between transition">
+        <div class="flex justify-between items-center mb-1">
+            <span class="text-[11px] font-bold text-slate-300">{p['label']}</span>
+            <span class="text-[10px] font-mono font-semibold text-emerald-400" id="sub_p_{str(p['v']).replace('.','_')}">0 DH</span>
+        </div>
+        <input type="number" min="0" placeholder="0" data-val="{p['v']}" name="qte_{str(p['v']).replace('.','_')}" oninput="calculerCaisseAgent()" 
+               class="agent-input w-full text-center bg-slate-950 border border-slate-700 focus:border-emerald-400 rounded-lg py-1 font-mono font-extrabold text-sm text-white outline-none transition">
+    </div>
+    """ for p in pieces])
+
+    return f"""<!DOCTYPE html>
+<html lang="fr" class="dark h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PetroLaz - Caisse</title>
+    
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {{
+            document.documentElement.classList.add('dark');
+        }} else {{
+            document.documentElement.classList.remove('dark');
+        }}
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        body {{
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #08111a;
+            background-image: radial-gradient(circle at 50% 0%, rgba(18, 41, 64, 0.45) 0%, rgba(6, 12, 18, 0.95) 80%), url('/static/station_bg_sombre.png');
+            background-size: cover;
+            background-attachment: fixed;
+        }}
+        html:not(.dark) body {{
+            background-color: #eef2f6;
+            background-image: linear-gradient(180deg, rgba(240, 244, 248, 0.4) 0%, rgba(226, 232, 240, 0.7) 100%), url('/static/station_bg_Claire.jpg');
+        }}
+        .font-mono {{ font-family: 'JetBrains Mono', monospace; }}
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button {{ -webkit-appearance: none; margin: 0; }}
+        input[type="number"] {{ -moz-appearance: textfield; }}
+    </style>
+</head>
+<body class="h-full text-slate-100 flex flex-col p-3 sm:p-4 select-none overflow-x-hidden">
+
+    <!-- 1. EN-TÊTE ÉPURÉ & PROFESSIONNEL -->
+    <header class="bg-[#0b1622]/90 border border-slate-800 rounded-2xl px-5 py-3 mb-3 shadow-xl backdrop-blur-xl flex items-center justify-between gap-4">
+        
+        <!-- Gauche : Uniquement Nom et Prénom -->
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-slate-950 flex items-center justify-center font-black text-sm shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+                {nom_operateur[:2]}
+            </div>
+            <div>
+                <h1 class="text-base font-extrabold text-white uppercase tracking-wider">{nom_operateur}</h1>
+            </div>
+        </div>
+
+        <!-- Milieu : Date du jour & Heure actuelle en direct (Blanc pur, épuré, pro) -->
+        <div class="hidden sm:flex items-center gap-3 bg-black/40 border border-slate-800 px-5 py-2 rounded-xl">
+            <span class="text-sm font-bold text-white tracking-wide" id="live_date_str">--/--/----</span>
+            <span class="text-slate-600 font-bold">•</span>
+            <span class="font-mono text-base font-black text-white tracking-widest drop-shadow" id="live_clock_str">00:00:00</span>
+        </div>
+
+        <!-- Droite : Mode Thème + Bouton Déconnexion (Style pilule lumineux en rouge) -->
+        <div class="flex items-center gap-3">
+            <button type="button" onclick="toggleTheme()" class="w-9 h-9 rounded-xl bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 flex items-center justify-center transition cursor-pointer" title="Changer de mode">
+                <i data-lucide="sun" class="w-4 h-4 hidden dark:block text-amber-400"></i>
+                <i data-lucide="moon" class="w-4 h-4 block dark:hidden text-slate-700"></i>
+            </button>
+
+            <a href="/logout" class="px-5 py-2 rounded-full bg-gradient-to-r from-rose-600 to-red-600 hover:brightness-110 active:scale-95 transition text-white font-extrabold text-xs uppercase tracking-wider shadow-[0_0_15px_rgba(225,29,72,0.4)] flex items-center justify-center cursor-pointer">
+                Déconnexion
+            </a>
+        </div>
+    </header>
+
+    {message_alerte}
+
+    <!-- 2. FORMULAIRE PRINCIPAL DE CLÔTURE -->
+    <form action="/employe/cloturer" method="post" onsubmit="return confirm('Confirmez-vous la déclaration et la clôture de la caisse ?');" class="flex-1 flex flex-col justify-between space-y-3">
+        <input type="hidden" name="operateur" value="{nom_operateur}">
+        <input type="hidden" name="fusion" value="{total_theorique}">
+        <input type="hidden" id="credits_agent_json" name="credits_json" value="[]">
+        <input type="hidden" id="charges_agent_json" name="charges_json" value="[]">
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1">
+            
+            <!-- BLOC GAUCHE (7/12) : ESPÈCES & TPE -->
+            <div class="lg:col-span-7 bg-[#0b1622]/85 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-xl flex flex-col justify-between">
+                <div>
+                    <!-- Sous-total espèces -->
+                    <div class="flex justify-between items-center pb-2.5 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-black uppercase tracking-wider text-slate-200">Espèces Physiques</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-base font-mono font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-0.5 rounded-lg" id="txt_total_especes">0.00 DH</span>
+                        </div>
+                    </div>
+
+                    <!-- Billets -->
+                    <div class="mb-3">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Billets</span>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {billets_html}
+                        </div>
+                    </div>
+
+                    <!-- Monnaie -->
+                    <div>
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Monnaie</span>
+                        <div class="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                            {pieces_html}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CARTE TPE -->
+                <div class="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-300">Tickets Carte / TPE</span>
+                    <div class="w-40 sm:w-48">
+                        <input type="number" step="0.01" id="agent_tpe" name="tpe" value="0.00" oninput="calculerCaisseAgent()" 
+                               class="w-full text-right px-3 py-1.5 bg-slate-950 rounded-lg border border-slate-700 focus:border-cyan-400 font-mono font-bold text-base text-white outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- BLOC DROIT (5/12) : CRÉDITS & CHARGES -->
+            <div class="lg:col-span-5 flex flex-col gap-3">
+                
+                <!-- SECTION 1 : BONS DE CRÉDIT CLIENT -->
+                <div class="bg-[#0b1622]/85 border border-slate-800 rounded-2xl p-3.5 shadow-xl backdrop-blur-xl flex flex-col flex-1">
+                    <div class="flex justify-between items-center pb-2 border-b border-slate-800 mb-2">
+                        <span class="text-xs font-black uppercase tracking-wider text-slate-200">Bons de Crédits Clients</span>
+                        
+                        <!-- Bouton pilule rose sans '+' -->
+                        <button type="button" onclick="ajouterCreditAgent()" class="px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 hover:brightness-110 active:scale-95 transition text-white font-extrabold text-[11px] uppercase tracking-wider shadow-[0_0_12px_rgba(244,63,94,0.35)] cursor-pointer">
+                            Nouveau Bon
+                        </button>
+                    </div>
+
+                    <div id="liste_credits_agent" class="space-y-2 overflow-y-auto max-h-[175px] pr-1"></div>
+                    
+                    <div class="mt-auto pt-2 flex justify-between items-center text-xs text-slate-400 font-bold">
+                        <span>Total Crédits :</span>
+                        <span class="font-mono text-xs text-rose-400 font-bold" id="txt_total_credits">0.00 DH</span>
+                    </div>
+                </div>
+
+                <!-- SECTION 2 : CHARGES STATION -->
+                <div class="bg-[#0b1622]/85 border border-slate-800 rounded-2xl p-3.5 shadow-xl backdrop-blur-xl flex flex-col flex-1">
+                    <div class="flex justify-between items-center pb-2 border-b border-slate-800 mb-2">
+                        <span class="text-xs font-black uppercase tracking-wider text-slate-200">Charges & Achats Station</span>
+                        
+                        <!-- Bouton pilule ambre sans '+' -->
+                        <button type="button" onclick="ajouterChargeAgent()" class="px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:brightness-110 active:scale-95 transition text-slate-950 font-extrabold text-[11px] uppercase tracking-wider shadow-[0_0_12px_rgba(245,158,11,0.35)] cursor-pointer">
+                            Ajouter Dépense
+                        </button>
+                    </div>
+
+                    <div id="liste_charges_agent" class="space-y-2 overflow-y-auto max-h-[140px] pr-1"></div>
+
+                    <div class="mt-auto pt-2 flex justify-between items-center text-xs text-slate-400 font-bold">
+                        <span>Total Dépenses :</span>
+                        <span class="font-mono text-xs text-amber-400 font-bold" id="txt_total_charges">0.00 DH</span>
+                    </div>
+                </div>
+
+                <!-- TOTAL GENERAL & BOUTON VALIDER -->
+                <div class="bg-[#04090f] border border-slate-800 p-3.5 rounded-2xl shadow-xl flex items-center justify-between gap-4">
+                    <div>
+                        <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Total Déclaré</span>
+                        <span class="text-xl sm:text-2xl font-mono font-black text-emerald-400 drop-shadow" id="txt_total_agent">
+                            0.00 DH
+                        </span>
+                    </div>
+                    
+                    <!-- Bouton Valider : Pilule lumineuse orange -->
+                    <button type="submit" class="px-8 py-3 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-110 active:scale-95 transition text-white font-extrabold text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(249,115,22,0.4)] cursor-pointer">
+                        Valider
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </form>
+
+    <script>
+        let creditsAgent = [];
+        let chargesAgent = [];
+        const clientsOptions = `{clients_options}`;
+
+        // 1. HORLOGE EN DIRECT & DATE DU JOUR
+        function updateClock() {{
+            const now = new Date();
+            const dateOptions = {{ weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }};
+            document.getElementById('live_date_str').innerText = now.toLocaleDateString('fr-FR', dateOptions);
+
+            const hrs = String(now.getHours()).padStart(2, '0');
+            const mins = String(now.getMinutes()).padStart(2, '0');
+            const secs = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('live_clock_str').innerText = `${{hrs}}:${{mins}}:${{secs}}`;
+        }}
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // 2. THEME SWITCHER
+        function toggleTheme() {{
+            const isDark = document.documentElement.classList.contains('dark');
+            if (isDark) {{
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            }} else {{
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }}
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }}
+
+        // 3. GESTION DES CRÉDITS
+        function ajouterCreditAgent() {{
+            creditsAgent.push({{ id: Date.now(), is_particulier: false, nom: '', matricule: '', litrage: 0, montant: 0 }});
+            renderCredits();
+        }}
+        function supprimerCredit(id) {{
+            creditsAgent = creditsAgent.filter(c => c.id !== id);
+            renderCredits();
+            calculerCaisseAgent();
+        }}
+        function toggleTypeClient(id) {{
+            const c = creditsAgent.find(x => x.id === id);
+            if (c) {{
+                c.is_particulier = !c.is_particulier;
+                c.nom = '';
+                renderCredits();
+            }}
+        }}
+        function updateCredit(id, field, val) {{
+            const c = creditsAgent.find(x => x.id === id);
+            if (c) {{
+                c[field] = (field === 'montant' || field === 'litrage') ? (parseFloat(val) || 0) : val;
+            }}
+            calculerCaisseAgent();
+        }}
+        function renderCredits() {{
+            let h = '';
+            creditsAgent.forEach(c => {{
+                h += `
+                <div class="bg-slate-950/80 border border-slate-800 p-2 rounded-xl flex flex-col gap-1.5">
+                    <div class="flex items-center justify-between">
+                        <button type="button" onclick="toggleTypeClient(${{c.id}})" class="text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${{c.is_particulier ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'}}">
+                            ${{c.is_particulier ? 'Particulier' : 'Client Enregistré'}}
+                        </button>
+                        <button type="button" onclick="supprimerCredit(${{c.id}})" class="text-rose-400 hover:text-rose-200 font-bold text-xs px-1">✕</button>
+                    </div>
+                    <div class="grid grid-cols-12 gap-1.5">
+                        <div class="col-span-12 sm:col-span-6">
+                            ${{c.is_particulier ? `
+                                <input type="text" placeholder="Nom & Prénom" value="${{c.nom}}" oninput="updateCredit(${{c.id}}, 'nom', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white outline-none">
+                            ` : `
+                                <select onchange="updateCredit(${{c.id}}, 'nom', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white outline-none">
+                                    <option value="">Sélectionner Client...</option>
+                                    ${{clientsOptions}}
+                                </select>
+                            `}}
+                        </div>
+                        <div class="col-span-4 sm:col-span-2">
+                            <input type="text" placeholder="Matricule" value="${{c.matricule || ''}}" oninput="updateCredit(${{c.id}}, 'matricule', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-xs text-center font-mono uppercase text-white outline-none">
+                        </div>
+                        <div class="col-span-4 sm:col-span-2">
+                            <input type="number" step="0.01" placeholder="Litres" value="${{c.litrage || ''}}" oninput="updateCredit(${{c.id}}, 'litrage', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-xs text-center font-mono text-cyan-300 outline-none">
+                        </div>
+                        <div class="col-span-4 sm:col-span-2">
+                            <input type="number" step="0.01" placeholder="DH" value="${{c.montant || ''}}" oninput="updateCredit(${{c.id}}, 'montant', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-xs text-right font-mono font-bold text-rose-400 outline-none">
+                        </div>
+                    </div>
+                </div>`;
+            }});
+            document.getElementById('liste_credits_agent').innerHTML = h;
+        }}
+
+        // 4. GESTION DES CHARGES
+        function ajouterChargeAgent() {{
+            chargesAgent.push({{ id: Date.now(), motif: '', montant: 0 }});
+            renderCharges();
+        }}
+        function supprimerCharge(id) {{
+            chargesAgent = chargesAgent.filter(x => x.id !== id);
+            renderCharges();
+            calculerCaisseAgent();
+        }}
+        function updateCharge(id, field, val) {{
+            const ch = chargesAgent.find(x => x.id === id);
+            if (ch) ch[field] = field === 'montant' ? (parseFloat(val) || 0) : val;
+            calculerCaisseAgent();
+        }}
+        function renderCharges() {{
+            let h = '';
+            chargesAgent.forEach(ch => {{
+                h += `
+                <div class="grid grid-cols-12 gap-1.5 bg-slate-950/80 border border-slate-800 p-1.5 rounded-xl items-center">
+                    <input type="text" placeholder="Motif de la dépense" value="${{ch.motif}}" oninput="updateCharge(${{ch.id}}, 'motif', this.value)" class="col-span-7 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white outline-none">
+                    <input type="number" step="0.01" placeholder="0.00 DH" value="${{ch.montant || ''}}" oninput="updateCharge(${{ch.id}}, 'montant', this.value)" class="col-span-4 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-right font-mono font-bold text-amber-400 outline-none">
+                    <button type="button" onclick="supprimerCharge(${{ch.id}})" class="col-span-1 text-rose-400 hover:text-white font-bold text-xs text-center">✕</button>
+                </div>`;
+            }});
+            document.getElementById('liste_charges_agent').innerHTML = h;
+        }}
+
+        // 5. CALCULS TOTAUX
+        function calculerCaisseAgent() {{
+            let esp = 0;
+            document.querySelectorAll('.agent-input').forEach(inp => {{
+                const val = parseFloat(inp.getAttribute('data-val')) || 0;
+                const qte = parseInt(inp.value) || 0;
+                const sub = val * qte;
+                esp += sub;
+
+                const bId = 'sub_b_' + val;
+                const pId = 'sub_p_' + String(val).replace('.', '_');
+                const targetSub = document.getElementById(bId) || document.getElementById(pId);
+                if (targetSub) targetSub.innerText = sub.toLocaleString('fr-FR') + ' DH';
+            }});
+
+            const tpe = parseFloat(document.getElementById('agent_tpe').value) || 0;
+            const cred = creditsAgent.reduce((acc, c) => acc + (parseFloat(c.montant) || 0), 0);
+            const charg = chargesAgent.reduce((acc, ch) => acc + (parseFloat(ch.montant) || 0), 0);
+            const total = esp + tpe + cred + charg;
+
+            document.getElementById('txt_total_especes').innerText = esp.toLocaleString('fr-FR', {{minimumFractionDigits: 2}}) + ' DH';
+            document.getElementById('txt_total_credits').innerText = cred.toLocaleString('fr-FR', {{minimumFractionDigits: 2}}) + ' DH';
+            document.getElementById('txt_total_charges').innerText = charg.toLocaleString('fr-FR', {{minimumFractionDigits: 2}}) + ' DH';
+            document.getElementById('txt_total_agent').innerText = total.toLocaleString('fr-FR', {{minimumFractionDigits: 2}}) + ' DH';
+
+            document.getElementById('credits_agent_json').value = JSON.stringify(creditsAgent);
+            document.getElementById('charges_agent_json').value = JSON.stringify(chargesAgent);
+        }}
+
+        document.addEventListener('DOMContentLoaded', () => {{
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }});
+    </script>
+</body>
+</html>"""
 ==================================================
 FICHIER : .\utils\client_helpers.py
 ==================================================

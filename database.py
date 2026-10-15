@@ -256,7 +256,8 @@ def init_db():
     migrations = [
         ("achats_fournisseurs", "lignes_json", "TEXT DEFAULT '[]'"),
         ("client_encaissements", "client_nom_libre", "TEXT DEFAULT ''"),
-        ("prix_vente", "date_effet", "TEXT DEFAULT ''")
+        ("prix_vente", "date_effet", "TEXT DEFAULT ''"),
+        ("cloture_quart", "charges_json", "TEXT DEFAULT '[]'")  # <-- AJOUTER CETTE LIGNE
     ]
     for table, col, col_type in migrations:
         try:

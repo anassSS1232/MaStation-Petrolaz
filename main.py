@@ -14,56 +14,75 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
 from database import init_db
-from security import verifier_session  # <-- Import depuis security
+from security import verifier_session
 
 BASE_DIR = Path(__file__).resolve().parent
 
 # ================= 1. PERMISSIONS PAR RÔLE =================
+# Séparation stricte : l'employé est confiné à son sous-chemin dédié /employe
 PERMISSIONS = {
     "admin": ["*"],
     "administrateur": ["*"],
-    "comptable": ["/", "/rapport-quart", "/clients", "/prix", "/notes", "/fournisseurs", "/achats", "/releve", "/factures", "/encaissements", "/centre-rapports", "/api"],
-    "employe": ["/rapport-quart", "/releve"]
+    "comptable": [
+        "/",
+        "/rapport-quart",
+        "/clients",
+        "/prix",
+        "/notes",
+        "/fournisseurs",
+        "/achats",
+        "/factures",
+        "/encaissements",
+        "/centre-rapports",
+        "/api",
+    ],
+    "employe": ["/employe"],
 }
 
 # ================= 2. MIDDLEWARE D'AUTHENTIFICATION =================
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        
+
+        # Routes publiques libres d'accès
         if path in ["/login", "/logout", "/favicon.ico"] or path.startswith("/static"):
             return await call_next(request)
-        
+
         cookie_session = request.cookies.get("session_user")
         user = verifier_session(cookie_session)
-        
+
+        # Redirection si non authentifié
         if not user:
             response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
             response.delete_cookie("session_user")
             return response
-        
+
         role = str(user.get("role", "employe")).lower().strip()
         request.state.user = user
 
+        # Accès complet pour l'admin
         if role in ["admin", "administrateur"]:
             return await call_next(request)
-        
+
+        # Vérification des autorisations par préfixe ou route exacte
         allowed_routes = PERMISSIONS.get(role, [])
         is_allowed = any(path == r or (r != "/" and path.startswith(r)) for r in allowed_routes)
 
         if not is_allowed:
-            if role == "employe" and path == "/":
-                return RedirectResponse(url="/rapport-quart", status_code=status.HTTP_303_SEE_OTHER)
+            # Si le rôle est employé, on le renvoie silencieusement et directement à son poste
+            if role == "employe":
+                return RedirectResponse(url="/employe/poste", status_code=status.HTTP_303_SEE_OTHER)
 
+            # Écran d'interdiction pour les autres rôles
             return HTMLResponse(
                 content=f"""
                 <div style="text-align: center; margin-top: 100px; font-family: sans-serif;">
                     <h1 style="color: #e11d48; font-size: 2rem;">Accès Refusé (403)</h1>
                     <p style="color: #64748b;">Votre rôle <b>{role.upper()}</b> n'a pas accès à cette section.</p>
-                    <a href="/rapport-quart" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #0284c7; color: white; border-radius: 8px; text-decoration: none;">Retour au poste</a>
+                    <a href="/" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: #0284c7; color: white; border-radius: 8px; text-decoration: none;">Retour à l'accueil</a>
                 </div>
-                """, 
-                status_code=status.HTTP_403_FORBIDDEN
+                """,
+                status_code=status.HTTP_403_FORBIDDEN,
             )
 
         return await call_next(request)
@@ -84,7 +103,7 @@ app.add_middleware(AuthMiddleware)
 static_folder = BASE_DIR / "static"
 static_folder.mkdir(parents=True, exist_ok=True)
 
-# SÉCURISATION CONTRE LE PATH TRAVERSAL / LFI
+# Protection Path-Traversal sur les fichiers clients
 @app.get("/static/uploads/clients/{nom_fichier:path}")
 async def servir_document_client(nom_fichier: str):
     nom_fichier = urllib.parse.unquote(nom_fichier)
@@ -101,13 +120,12 @@ async def servir_document_client(nom_fichier: str):
             ".png": "image/png",
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
-            ".webp": "image/webp"
+            ".webp": "image/webp",
         }
         return FileResponse(str(target_file), media_type=media_types.get(ext, "application/octet-stream"))
 
     return HTMLResponse("Document introuvable sur le disque", status_code=404)
 
-# Montage static
 app.mount("/static", StaticFiles(directory=str(static_folder)), name="static")
 
 # ================= 4. ROUTEURS =================
@@ -126,9 +144,13 @@ from pages.rapport_dettes_fournisseurs import router as rapport_dettes_fournisse
 from pages.rapport_grand_livre import router as rapport_grand_livre_router
 from pages.rapport_etat_stocks import router as rapport_etat_stocks_router
 
-# ...
-app.include_router(rapport_etat_stocks_router)
+# Inclusion du nouveau module dédié Pompiste
+from pages.portail_employe.routes import router as employe_router
 
+app.include_router(employe_router)
+
+# Autres modules de l'application
+app.include_router(rapport_etat_stocks_router)
 app.include_router(rapport_grand_livre_router)
 app.include_router(rapport_dettes_fournisseurs_router)
 app.include_router(rapport_soldes_clients_router)

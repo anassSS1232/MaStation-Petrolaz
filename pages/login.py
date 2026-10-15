@@ -195,7 +195,8 @@ async def login_post(username: str = Form(...), password: str = Form(...)):
         )
 
     role = str(user.get("role", "employe")).lower().strip()
-    redirect_target = "/rapport-quart" if role == "employe" else "/"
+    # Redirection vers son espace dédié isolé :
+    redirect_target = "/employe/poste" if role == "employe" else "/"
 
     response = RedirectResponse(
         url=redirect_target, status_code=status.HTTP_303_SEE_OTHER

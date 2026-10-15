@@ -7,17 +7,18 @@ from fastapi import Request
 
 
 # ==============================================================================
-# 1. LOGO OFFICIEL IMAGE : "PETROLAZ" AVEC EFFET AGRANDISSEMENT MAGIQUE
+# 1. LOGO DE L'APPLICATION : "/static/logo_app.png" (FIXE & FLUIDE)
 # ==============================================================================
-def get_mastation_logo(height: int = 54) -> str:
+def get_mastation_logo(height: int = 40) -> str:
     """
-    Retourne le logo officiel PetroLaz sous forme d'image depuis /static/petrolaz.png.
+    Retourne le logo officiel de l'application PetroLaz depuis /static/logo_app.png.
+    Taille fixe, optimisée pour le menu haut sans débordement ni ralentissement.
     """
-    return f"""<img src="/static/petrolaz.png" id="main-petrolaz-logo" alt="PetroLaz" class="select-none inline-block object-contain drop-shadow-sm transition-all duration-300 origin-top-left" style="height: {height}px; max-height: {height}px; width: auto;" />"""
+    return f"""<img src="/static/logo_app.png" id="main-petrolaz-logo" alt="PetroLaz" class="select-none inline-block object-contain" style="height: {height}px; max-height: {height}px; width: auto;" />"""
 
 
 # ==============================================================================
-# 2. INTERFACE DE CONNEXION / LOGIN (SECOURS / TEMPLATE UI)
+# 2. INTERFACE DE CONNEXION / LOGIN
 # ==============================================================================
 def login_page(error: str = None) -> str:
     error_banner = f"""
@@ -53,7 +54,7 @@ def login_page(error: str = None) -> str:
                         brand: {{
                             gold: '#E5A842',
                             'gold-hover': '#f5b752',
-                            dark: '#0A1622',
+                            dark: '#070E15',
                             petrol: '#184E68',
                             bg: '#EEF2F6',
                             'bg-dark': '#060C12'
@@ -115,7 +116,7 @@ def login_page(error: str = None) -> str:
     <div class="w-full max-w-[420px] p-6 sm:p-8 rounded-3xl bg-white/85 dark:bg-[#0A1622]/80 backdrop-blur-2xl border border-white/80 dark:border-white/10 shadow-2xl transition-all duration-200">
         
         <div class="flex justify-center mb-6">
-            {get_mastation_logo(height=110)}
+            {get_mastation_logo(height=80)}
         </div>
 
         {error_banner}
@@ -183,7 +184,7 @@ def login_page(error: str = None) -> str:
 
 
 # ==============================================================================
-# 3. LAYOUT PRINCIPAL AVEC HARMONISATION DU SIDEBAR & NAVBAR (SANS LIGNE DE SÉPARATION)
+# 3. LAYOUT PRINCIPAL (LOGO FIXE, SANS LAG, COULEUR HARMONISÉE)
 # ==============================================================================
 def layout(content: str, active_tab: str = "supervision", request: Request = None):
     user = getattr(request.state, "user", None) if request else None
@@ -264,40 +265,39 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
 
     # ------------------ MOBILE BOTTOM NAV ------------------
     mobile_menu_items = f"""
-    <a href="/rapport-quart" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if is_calcul_active else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/rapport-quart" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if is_calcul_active else 'text-slate-400'}">
         <i data-lucide="calculator" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Calcul</span>
     </a>
-    <a href="/clients" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'clients' else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/clients" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'clients' else 'text-slate-400'}">
         <i data-lucide="users" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Clients</span>
     </a>
-    <a href="/factures" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'factures' else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/factures" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'factures' else 'text-slate-400'}">
         <i data-lucide="file-text" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Factures</span>
     </a>
-    <a href="/encaissements" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'encaissements' else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/encaissements" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'encaissements' else 'text-slate-400'}">
         <i data-lucide="wallet" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Encaissements</span>
     </a>
-    <a href="/achats" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'achats' else 'text-slate-600 dark:text-slate-400'}">
+    <a href="/achats" class="flex flex-col items-center justify-center flex-1 py-1 {'text-[#EA580C] font-bold' if active_tab == 'achats' else 'text-slate-400'}">
         <i data-lucide="shopping-cart" class="w-4 h-4"></i>
         <span class="text-[10px] mt-0.5 whitespace-nowrap">Achats</span>
     </a>
     """
 
-    # ------------------ SIDEBAR DYNAMIQUE AÉRÉE (SANS PROFIL UTILISATEUR) ------------------
+    # ------------------ SIDEBAR DYNAMIQUE COMPACTE ------------------
     sidebar_html = f"""
     <div id="sidebar-trigger-wrapper" class="group/sidebar shrink-0 flex h-full z-30 pt-16">
-        <div class="w-3.5 h-full group-hover/sidebar:w-0 transition-all duration-300 flex items-center justify-center cursor-pointer">
+        <div class="w-3.5 h-full group-hover/sidebar:w-0 transition-all duration-200 flex items-center justify-center cursor-pointer">
             <div class="w-1.5 h-16 bg-[#E5A842]/60 group-hover/sidebar:opacity-0 rounded-full transition-opacity"></div>
         </div>
 
-        <aside id="sidebar-menu" class="w-0 opacity-0 group-hover/sidebar:w-64 group-hover/sidebar:opacity-100 transition-all duration-300 ease-in-out overflow-hidden flex flex-col bg-white dark:bg-[#0A1622] backdrop-blur-none border-none p-0 group-hover/sidebar:p-5 shadow-2xl">
-            <div class="w-56 flex flex-col h-full pt-10">
+        <aside id="sidebar-menu" class="w-0 opacity-0 group-hover/sidebar:w-64 group-hover/sidebar:opacity-100 transition-all duration-200 ease-in-out overflow-hidden flex flex-col bg-[#070E15] border-r border-[#142636] p-0 group-hover/sidebar:p-5 shadow-2xl">
+            <div class="w-56 flex flex-col h-full pt-4">
                 
-                <!-- Navigation Sidebar directe et fluide -->
-                <nav class="flex flex-col gap-4 flex-1 overflow-y-auto pr-1" id="sidebar-links">
+                <nav class="flex flex-col gap-3 flex-1 overflow-y-auto pr-1" id="sidebar-links">
                     <a href="/fournisseurs" class="sidebar-item {'is-active' if active_tab == 'fournisseurs' else ''}">
                         <i data-lucide="factory" class="w-5 h-5 shrink-0"></i>
                         <span>Fournisseurs</span>
@@ -329,8 +329,7 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
                     </a>
                 </nav>
 
-                <!-- Bas de Sidebar sans ligne de séparation -->
-                <div class="pt-4 mt-auto flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-bold shrink-0">
+                <div class="pt-4 mt-auto flex items-center justify-between text-[11px] text-slate-400 font-bold shrink-0">
                     <span>PetroLaz</span>
                     <span class="text-[#E5A842]">v2.5</span>
                 </div>
@@ -339,10 +338,10 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
     </div>
     """
 
-    # LOGO DANS LA BARRE DE NAVIGATION (S'AGRANDIT MAGIQUEMENT VERS LE BAS AU SURVOL DU MENU GAUCHE)
+    # LOGO STRICTEMENT ENCADRÉ ET FIXE
     nav_logo_html = f"""
-    <a href="/" id="navbar-brand-logo" class="flex items-center group shrink-0 transition-all duration-300 py-1 z-50 relative origin-top-left" title="PetroLaz - Accueil">
-        {get_mastation_logo(height=52)}
+    <a href="/" id="navbar-brand-logo" class="flex items-center shrink-0 py-1 transition-opacity hover:opacity-90" title="PetroLaz - Accueil">
+        {get_mastation_logo(height=42)}
     </a>
     """
 
@@ -373,7 +372,7 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
                         brand: {{
                             gold: '#E5A842',
                             'gold-hover': '#f5b752',
-                            dark: '#0A1622',
+                            dark: '#070E15',
                             petrol: '#184E68',
                             bg: '#EEF2F6',
                             'bg-dark': '#060C12'
@@ -399,7 +398,6 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     
     <style>
-        /* 1. SCROLLBAR INVISIBLE */
         html, body, main, div, nav, aside, * {{
             scrollbar-width: none !important;
             -ms-overflow-style: none !important;
@@ -434,7 +432,6 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             background-attachment: fixed !important;
         }}
 
-        /* 2. GESTION DES INPUTS DATE */
         input[type="date"] {{
             color-scheme: light;
         }}
@@ -458,211 +455,133 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             opacity: 1 !important;
         }}
 
-        /* 3. NAVBAR SANS SÉPARATION & EFFET MAGIQUE DU LOGO */
+        /* ========================================================
+           BARRE DU HAUT : COULEUR DU LOGO ET ZÉRO TRANSFORMATION
+        ======================================================== */
         #main-navbar {{
-            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease !important;
-            will-change: transform, opacity;
-            border-bottom: none !important;
-            box-shadow: none !important;
+            background-color: #070e15 !important;
+            border-bottom: 1px solid #142636 !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+            transition: transform 0.25s ease !important;
         }}
         .navbar-hidden {{
             transform: translateY(-100%) !important;
-            opacity: 0 !important;
             pointer-events: none !important;
         }}
 
         #sidebar-menu {{
-            border-right: none !important;
+            border-right: 1px solid #142636 !important;
         }}
 
-        /* MAGIE DU LOGO : S'AGRANDIT ET DESCEND DANS L'ESPACE AU SURVOL DU MENU GAUCHE */
+        /* Logo toujours net, fixe, sans changement au survol */
         #main-petrolaz-logo {{
-            transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
-            will-change: transform, height;
-        }}
-
-        body:has(#sidebar-trigger-wrapper:hover) #main-petrolaz-logo,
-        body:has(#sidebar-menu:hover) #main-petrolaz-logo {{
-            height: 98px !important;
-            max-height: 98px !important;
-            transform: translateY(18px) scale(1.15) !important;
-            filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.6)) !important;
+            height: 42px !important;
+            max-height: 42px !important;
+            width: auto !important;
+            object-fit: contain !important;
+            transform: none !important;
         }}
 
         .nav-top-link {{
             display: inline-flex;
             align-items: center;
             gap: 0.6rem;
-            padding: 0.65rem 0.95rem;
-            font-size: 0.9375rem;
+            padding: 0.55rem 0.95rem;
+            font-size: 0.9rem;
             font-weight: 700;
-            color: #1e293b;
+            color: #e2e8f0 !important;
             background: transparent !important;
             border: none !important;
             outline: none !important;
             transition: color 0.15s ease;
             white-space: nowrap;
-            border-radius: 0.75rem;
-            -webkit-font-smoothing: antialiased;
+            border-radius: 0.65rem;
         }}
-        .dark .nav-top-link {{ color: #ffffff; }}
         .nav-top-link i, .nav-top-link svg {{
-            color: #334155;
-            stroke: #334155;
+            color: #94a3b8;
+            stroke: #94a3b8;
             transition: color 0.15s ease, stroke 0.15s ease;
-        }}
-        .dark .nav-top-link i, .dark .nav-top-link svg {{
-            color: #ffffff;
-            stroke: #ffffff;
         }}
 
         .nav-top-link:hover,
         .nav-top-link:hover *,
         .nav-top-link.active,
         .nav-top-link.active * {{
-            color: #0284C7 !important;
-            stroke: #0284C7 !important;
-            background: transparent !important;
-            background-color: transparent !important;
-        }}
-        html.dark .nav-top-link:hover,
-        html.dark .nav-top-link:hover *,
-        html.dark .nav-top-link.active,
-        html.dark .nav-top-link.active * {{
-            color: #EA580C !important;
-            stroke: #EA580C !important;
-            background: transparent !important;
-            background-color: transparent !important;
+            color: #E5A842 !important;
+            stroke: #E5A842 !important;
         }}
 
         .nav-dropdown-menu {{
-            background-color: #FFFFFF !important;
-            border: 1px solid #CBD5E1 !important;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            opacity: 1 !important;
-        }}
-        html.dark .nav-dropdown-menu {{
-            background-color: #0A1622 !important;
-            border: 1px solid #1C354A !important;
-            box-shadow: 0 20px 35px -8px rgba(0, 0, 0, 0.85) !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            opacity: 1 !important;
+            background-color: #070e15 !important;
+            border: 1px solid #142636 !important;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.7) !important;
         }}
 
         .nav-sub-link {{
             display: flex;
             align-items: center;
             gap: 0.75rem;
-            padding: 0.65rem 0.9rem;
-            font-size: 0.875rem;
+            padding: 0.6rem 0.85rem;
+            font-size: 0.85rem;
             font-weight: 700;
-            color: #1e293b;
-            border-radius: 0.65rem;
-            background: transparent !important;
-            background-color: transparent !important;
+            color: #cbd5e1 !important;
+            border-radius: 0.5rem;
             transition: color 0.15s ease;
-            -webkit-font-smoothing: antialiased;
         }}
-        .dark .nav-sub-link {{ color: #CBD5E1; }}
         .nav-sub-link i, .nav-sub-link svg {{ 
-            color: #475569; 
-            stroke: #475569; 
-            transition: color 0.15s ease, stroke 0.15s ease;
-        }}
-        .dark .nav-sub-link i, .dark .nav-sub-link svg {{ 
-            color: #94A3B8; 
-            stroke: #94A3B8; 
-            transition: color 0.15s ease, stroke 0.15s ease;
+            color: #94a3b8; 
+            stroke: #94a3b8; 
         }}
 
         .nav-sub-link:hover,
         .nav-sub-link:hover *,
         .nav-sub-link.active,
         .nav-sub-link.active * {{
-            color: #0284C7 !important;
-            stroke: #0284C7 !important;
-            background: transparent !important;
-            background-color: transparent !important;
-        }}
-        html.dark .nav-sub-link:hover,
-        html.dark .nav-sub-link:hover *,
-        html.dark .nav-sub-link.active,
-        html.dark .nav-sub-link.active * {{
-            color: #EA580C !important;
-            stroke: #EA580C !important;
-            background: transparent !important;
-            background-color: transparent !important;
+            color: #E5A842 !important;
+            stroke: #E5A842 !important;
         }}
 
         .nav-logout-btn {{
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 0.55rem 0.85rem;
-            font-size: 0.875rem;
+            padding: 0.45rem 0.8rem;
+            font-size: 0.85rem;
             font-weight: 700;
-            color: #334155;
-            background: transparent !important;
-            border: none !important;
+            color: #cbd5e1;
             transition: color 0.15s ease;
         }}
-        .dark .nav-logout-btn {{ color: #cbd5e1; }}
-        .nav-logout-btn i, .nav-logout-btn svg {{ color: #334155; stroke: #334155; }}
-        .dark .nav-logout-btn i, .dark .nav-logout-btn svg {{ color: #cbd5e1; stroke: #cbd5e1; }}
         .nav-logout-btn:hover {{ color: #f43f5e !important; }}
-        .nav-logout-btn:hover i, .nav-logout-btn:hover svg {{ color: #f43f5e !important; stroke: #f43f5e !important; }}
+        .nav-logout-btn:hover i {{ color: #f43f5e !important; stroke: #f43f5e !important; }}
 
-        /* ========================================================
-           NOUVEAU STYLE DU MENU LATÉRAL (SIDEBAR)
-        ======================================================== */
         .sidebar-item {{
             display: flex;
             align-items: center;
             gap: 0.85rem;
-            padding: 0.65rem 0.5rem;
-            color: #1e293b;
+            padding: 0.6rem 0.5rem;
+            color: #f1f5f9;
             font-weight: 700;
-            font-size: 0.9375rem;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            border-radius: 0;
-            transition: color 0.18s ease;
+            font-size: 0.9rem;
+            border-radius: 0.5rem;
+            transition: color 0.15s ease;
             white-space: nowrap;
-            -webkit-font-smoothing: antialiased;
-        }}
-        html.dark .sidebar-item {{
-            color: #FFFFFF !important;
         }}
         .sidebar-item i, .sidebar-item svg {{
-            color: #334155;
-            stroke: #334155;
-            transition: color 0.18s ease, stroke 0.18s ease;
+            color: #94a3b8;
+            stroke: #94a3b8;
         }}
-        html.dark .sidebar-item i, html.dark .sidebar-item svg {{
-            color: #FFFFFF !important;
-            stroke: #FFFFFF !important;
-        }}
-
         .sidebar-item:hover,
-        .sidebar-item:hover *,
-        .sidebar-item.is-active,
-        .sidebar-item.is-active * {{
-            color: #EA580C !important;
-            stroke: #EA580C !important;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            transform: none !important;
+        .sidebar-item.is-active {{
+            color: #E5A842 !important;
+        }}
+        .sidebar-item:hover i, .sidebar-item:hover svg,
+        .sidebar-item.is-active i, .sidebar-item.is-active svg {{
+            color: #E5A842 !important;
+            stroke: #E5A842 !important;
         }}
 
         /* ========================================================
-           4. HARMONISATION DES BOUTONS
+           BOUTONS DE L'APPLICATION
         ======================================================== */
         button[type="submit"]:not(.client-dropdown-menu *),
         button[onclick*="ouvrirModal"]:not(.client-dropdown-menu *),
@@ -764,9 +683,6 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             transform: translateY(-1px) !important;
         }}
 
-        /* ========================================================
-           5. RÉINITIALISATION DES MENUS DÉROULANTS (DROPDOWNS)
-        ======================================================== */
         .client-dropdown-menu button,
         .client-dropdown-menu a {{
             height: auto !important;
@@ -857,8 +773,8 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
 </head>
 <body class="h-full flex flex-col overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200 text-xs">
     
-    <!-- 1. NAVBAR SANS SÉPARATION -->
-    <nav id="main-navbar" class="fixed top-0 left-0 right-0 bg-white dark:bg-[#0A1622] w-full z-40 h-16 shrink-0">
+    <!-- 1. NAVBAR FIXE, HARMONISÉE AVEC LE LOGO -->
+    <nav id="main-navbar" class="fixed top-0 left-0 right-0 w-full z-40 h-16 shrink-0">
         <div class="max-w-[1920px] mx-auto px-5 sm:px-8 h-full flex items-center justify-between">
             
             {nav_logo_html}
@@ -868,7 +784,7 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             </div>
             
             <div class="flex items-center gap-4 shrink-0">
-                <button type="button" onclick="toggleTheme()" class="px-3 py-2.5 rounded-xl bg-white/70 dark:bg-[#102434]/50 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-[#18354c]/70 border border-slate-200/80 dark:border-white/10 transition shadow-xs cursor-pointer" title="Changer de thème">
+                <button type="button" onclick="toggleTheme()" class="px-3 py-2.5 rounded-xl bg-white/10 text-slate-300 hover:bg-white/20 border border-white/10 transition shadow-xs cursor-pointer" title="Changer de thème">
                     <i data-lucide="sun" class="w-4 h-4 hidden dark:block text-amber-400"></i>
                     <i data-lucide="moon" class="w-4 h-4 block dark:hidden text-slate-700"></i>
                 </button>
@@ -885,14 +801,14 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
     <div class="flex-1 flex overflow-hidden w-full relative h-full">
         {sidebar_html}
 
-        <main id="main-content-scroll" class="flex-1 min-w-0 overflow-y-auto px-3 sm:px-6 md:px-8 pt-[72px] pb-10 transition-all duration-300 ease-in-out">
+        <main id="main-content-scroll" class="flex-1 min-w-0 overflow-y-auto px-3 sm:px-6 md:px-8 pt-[72px] pb-10">
             <div class="max-w-[1700px] mx-auto min-h-[calc(100vh-95px)] flex flex-col justify-center w-full py-2">
                 {content}
             </div>
         </main>
     </div>
 
-    <nav class="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#0A1622] border-t border-slate-200 dark:border-white/10 px-2 py-1 flex items-center justify-around z-50 shadow-2xl">
+    <nav class="lg:hidden fixed bottom-0 left-0 right-0 bg-[#070E15] border-t border-[#142636] px-2 py-1 flex items-center justify-around z-50 shadow-2xl">
         {mobile_menu_items}
     </nav>
 
@@ -915,47 +831,8 @@ def layout(content: str, active_tab: str = "supervision", request: Request = Non
             }}
         }});
 
-        // GESTION DU SCROLL INTELLIGENT ET DE L'EFFET DU LOGO
         document.addEventListener('DOMContentLoaded', () => {{
             if (typeof lucide !== 'undefined') lucide.createIcons();
-
-            const navbar = document.getElementById('main-navbar');
-            const scrollContainer = document.getElementById('main-content-scroll');
-            
-            if (navbar && scrollContainer) {{
-                let lastScrollTop = 0;
-                const deltaThreshold = 8;
-
-                scrollContainer.addEventListener('scroll', () => {{
-                    let currentScroll = scrollContainer.scrollTop;
-
-                    if (Math.abs(lastScrollTop - currentScroll) <= deltaThreshold) return;
-
-                    if (currentScroll > lastScrollTop && currentScroll > 25) {{
-                        navbar.classList.add('navbar-hidden');
-                    }} else if (currentScroll < lastScrollTop) {{
-                        navbar.classList.remove('navbar-hidden');
-                    }}
-
-                    lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
-                }}, {{ passive: true }});
-            }}
-
-            // SÉCURITÉ COMPATIBILITÉ JS POUR L'AGRANDISSEMENT DU LOGO
-            const sidebarWrapper = document.getElementById('sidebar-trigger-wrapper');
-            const logo = document.getElementById('main-petrolaz-logo');
-            if (sidebarWrapper && logo) {{
-                sidebarWrapper.addEventListener('mouseenter', () => {{
-                    logo.style.setProperty('height', '98px', 'important');
-                    logo.style.setProperty('max-height', '98px', 'important');
-                    logo.style.setProperty('transform', 'translateY(18px) scale(1.15)', 'important');
-                }});
-                sidebarWrapper.addEventListener('mouseleave', () => {{
-                    logo.style.removeProperty('height');
-                    logo.style.removeProperty('max-height');
-                    logo.style.removeProperty('transform');
-                }});
-            }}
         }});
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
